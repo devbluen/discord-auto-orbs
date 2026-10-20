@@ -81,3 +81,5 @@ Click **Copy report** in the panel and paste it into a new [issue](https://githu
 - Each release ships a `discord-orbs.exe.sha256` checksum; it's built by GitHub Actions from the public source.
 
 **This violates Discord's Terms of Service.** Your account may have quests suspended or be banned. Use at your own risk.
+
+<img width="525" height="908" alt="image" src="https://github.com/user-attachments/assets/542b1cfe-5630-44a7-a100-75c27c5903f6" />
