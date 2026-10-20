@@ -54,3 +54,5 @@ Not supported: `STREAM_ON_DESKTOP` (needs a real Go Live with someone else in th
 - No debug port, and no code downloaded from anywhere.
 
 **This violates Discord's Terms of Service.** Your account may have quests suspended or be banned. Use at your own risk.
+
+<img width="525" height="908" alt="image" src="https://github.com/user-attachments/assets/542b1cfe-5630-44a7-a100-75c27c5903f6" />
