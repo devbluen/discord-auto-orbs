@@ -38,6 +38,8 @@
     const enrollFailed = new Map(); // questId -> reason
     const overrides = new Map();    // questId -> userStatus returned by enroll (the store can lag behind)
     let autoAccept = true;
+    let notifications = true;
+    let finishedSinceIdle = 0;      // quests completed since the queue was last empty
 
     function wake() {
         state.wake?.();
@@ -65,7 +67,23 @@
         }
     };
 
-    createPanel();
+    const panel = createPanel();
+
+    // Native desktop notification (Electron turns the web Notification into a Windows toast).
+    // Clicking it brings Discord forward on the Quests page.
+    function notify(title, body) {
+        if (!notifications || typeof Notification === "undefined") return;
+        try {
+            const n = new Notification(title, { body });
+            n.onclick = () => {
+                if (window.DiscordNative?.window?.focus) window.DiscordNative.window.focus();
+                else window.focus();
+                panel.openQuests();
+            };
+        } catch (e) {
+            warn("Notification failed:", e?.message ?? e);
+        }
+    }
 
     /* ── webpack ─────────────────────────────────────────────── */
 
@@ -215,6 +233,9 @@
     const nameOf = q => q.config.messages?.questName ?? q.id;
     const orbsOf = q => (q.config.rewardsConfig?.rewards ?? [])
         .reduce((sum, r) => sum + (r.orbQuantity ?? r.orb_quantity ?? 0), 0);
+    // Completed but not claimed yet: what the badge counts.
+    const claimable = () => allQuests().filter(q =>
+        (statusOf(q).completedAt || done.has(q.id)) && !statusOf(q).claimedAt);
     const remainingOf = q => {
         const task = pickTask(q);
         return Math.max(1, targetOf(q, task) - progressOf(q, task));
@@ -320,6 +341,12 @@
             await runQuest(q);
             continue;
         }
+        if (finishedSinceIdle && !state.paused) {
+            const ready = claimable();
+            const orbs = ready.reduce((sum, r) => sum + orbsOf(r), 0);
+            notify("All quests done", `${ready.length} reward(s) ready to claim${orbs ? ` · ${orbs} orbs` : ""}.`);
+            finishedSinceIdle = 0;
+        }
         state.nextCheck = Date.now() + RECHECK_MS;
         await new Promise(r => {
             const t = setTimeout(r, RECHECK_MS);
@@ -344,11 +371,15 @@
             else if (task === "PLAY_ACTIVITY") await doActivity(q, task, target, alive, report);
             if (alive()) {
                 done.add(q.id);
+                finishedSinceIdle++;
                 log(`"${name}" completed! Claim the reward on the Quests page.`);
+                const orbs = orbsOf(q);
+                notify(`${name} completed`, orbs ? `${orbs} orbs ready to claim.` : "Reward ready to claim.");
             }
         } catch (e) {
             failed.set(q.id, errMsg(e));
             warn(`"${name}" failed:`, errMsg(e));
+            notify(`${name} failed`, errMsg(e));
         } finally {
             state.current = null;
         }
@@ -488,6 +519,8 @@
 #orbs-panel{position:fixed;right:16px;bottom:16px;z-index:1000;width:340px;max-height:60vh;display:flex;flex-direction:column;background:var(--background-floating,#111214);color:var(--text-normal,#dbdee1);border:1px solid var(--border-subtle,#ffffff14);border-radius:8px;box-shadow:0 8px 24px #0006;font:14px/1.4 var(--font-primary,sans-serif)}
 #orbs-panel.min{width:auto;max-width:340px}
 #orbs-panel.min .status,#orbs-panel.min ul,#orbs-panel.min button{display:none}
+#orbs-panel .badge{position:absolute;top:-8px;right:-8px;min-width:20px;height:20px;padding:0 6px;box-sizing:border-box;border-radius:10px;background:var(--status-danger,#f23f43);color:#fff;font-size:12px;font-weight:700;line-height:20px;text-align:center;box-shadow:0 0 0 3px var(--background-primary,#313338);display:none}
+#orbs-panel .badge.on{display:block}
 #orbs-panel header{display:flex;align-items:center;gap:6px;padding:8px 10px 8px 12px;cursor:pointer;user-select:none}
 #orbs-panel .t{font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #orbs-panel button{background:var(--brand-500,#5865F2);color:#fff;border:0;border-radius:4px;padding:4px 10px;font:inherit;font-size:12px;cursor:pointer}
@@ -522,12 +555,17 @@
         header.append(title, checkBtn, pauseBtn);
         const status = el("div", "status");
         const copyBtn = el("button", "sec", "Copy report");
+        const notifyBtn = el("button", "sec");
+        notifyBtn.title = "Desktop notifications when a quest finishes or fails";
         const options = el("div", "status");
         options.style.display = "flex";
+        options.style.flexWrap = "wrap";
         options.style.gap = "6px";
-        options.append(acceptBtn, copyBtn);
+        options.append(acceptBtn, notifyBtn, copyBtn);
         const list = el("ul");
-        panel.append(header, status, options, list);
+        // Unread-style counter of rewards ready to claim, visible even when minimized.
+        const badge = el("span", "badge");
+        panel.append(badge, header, status, options, list);
         document.body.append(panel);
 
         // null = automatic (open on the Quests page); true/false = the user chose.
@@ -617,6 +655,14 @@
             }
             setTimeout(() => (copyBtn.textContent = "Copy report"), 2000);
         });
+        notifyBtn.addEventListener("click", async () => {
+            notifications = !notifications;
+            if (notifications && typeof Notification !== "undefined" && Notification.permission === "default") {
+                try { await Notification.requestPermission(); } catch { }
+            }
+            if (notifications) notify("orbs notifications on", "You'll be notified when a quest finishes or fails.");
+            render();
+        });
         acceptBtn.addEventListener("click", () => {
             autoAccept = !autoAccept;
             if (autoAccept) wake();
@@ -699,7 +745,17 @@
             title.textContent = `orbs · ${summary}`;
             pauseBtn.textContent = state.paused ? "Resume" : "Pause";
             acceptBtn.textContent = `Auto-accept: ${autoAccept ? "on" : "off"}`;
+            notifyBtn.textContent = `Notifications: ${notifications ? "on" : "off"}`;
             checkBtn.disabled = pauseBtn.disabled = acceptBtn.disabled = state.phase !== "ready";
+
+            const ready = state.phase === "ready" ? claimable() : [];
+            const readyOrbs = ready.reduce((sum, q) => sum + orbsOf(q), 0);
+            const readyText = ready.length
+                ? `${ready.length} reward(s) ready to claim${readyOrbs ? ` · ${readyOrbs} orbs` : ""}`
+                : "";
+            badge.textContent = ready.length > 9 ? "9+" : String(ready.length);
+            badge.classList.toggle("on", ready.length > 0);
+            badge.title = readyText;
             if (!open) return;
 
             if (state.phase === "loading") status.textContent = `Waiting for Discord to load… ${state.error ? `(${state.error})` : ""}`;
@@ -707,6 +763,7 @@
             else if (state.paused) status.textContent = "Paused. Click Resume to continue.";
             else if (state.current) status.textContent = `Running "${nameOf(QuestsStore.getQuest(state.current.id) ?? { config: {}, id: state.current.id })}"`;
             else status.textContent = `Nothing queued. Next check in ${fmt((state.nextCheck - Date.now()) / 1000)}.`;
+            if (readyText) status.textContent += ` ${readyText}.`;
 
             if (state.phase !== "ready") return list.replaceChildren();
             // Rows follow the same priority the runner uses, so the queue order is what you see.
@@ -721,5 +778,6 @@
 
         setInterval(render, 1000);
         render();
+        return { openQuests: () => openQuest() };
     }
 })();

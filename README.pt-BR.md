@@ -44,6 +44,8 @@ e abra o exe novo (`1`, Install / update).
 - Aceita sozinho as missões que consegue completar (botão **Auto-accept** no painel).
 - Ordem: primeiro as que dão mais orbs por minuto restante, depois as sem orbs, das mais curtas para as mais longas.
 - O painel mostra a fila, o progresso e os erros. Os botões são **Check now** (verificar agora), **Pause** (pausar), **Copy report** (copiar relatório) e **Claim** (abre a página de missões para resgatar a recompensa).
+- Uma bolinha vermelha no painel (mesmo minimizado) conta as recompensas prontas para resgatar; passe o mouse para ver o total de orbs.
+- Notificações na área de trabalho quando uma missão termina, falha ou quando a fila inteira acaba. Clicar numa delas abre a página de missões. Ligue/desligue em **Notifications** no painel.
 - Quando o Discord atualiza, o script se reaplica sozinho na versão nova se ela já estiver baixada quando o Discord fechar. Se o painel sumir depois de uma atualização, abra o exe e instale de novo.
 
 | Tipo | Como |

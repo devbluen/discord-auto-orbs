@@ -44,6 +44,8 @@ and open the new exe again (`1`, Install / update).
 - Automatically accepts the quests it can complete (the **Auto-accept** button in the panel).
 - Order: quests that give the most orbs per remaining minute first, then quests without orbs, shortest first.
 - The panel shows the queue, progress and errors. Its buttons are **Check now**, **Pause**, **Copy report** and **Claim**, which opens the Quests page so you can claim the reward.
+- A red badge on the panel (even minimized) counts the rewards ready to claim; hover it for the total orbs.
+- Desktop notifications when a quest finishes, fails, or the whole queue is done. Clicking one opens the Quests page. Toggle them with **Notifications** in the panel.
 - When Discord updates, the script re-applies itself to the new version if that version was already downloaded when Discord closed. If the panel disappears after an update, open the exe and install again.
 
 | Type | How |
