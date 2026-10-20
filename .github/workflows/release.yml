@@ -1,0 +1,57 @@
+# Builds dist/discord-orbs.exe and publishes it as a GitHub release.
+# Manual only: run it from the Actions tab ("Release" → "Run workflow").
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag (e.g. v1.0.0)"
+        required: true
+      prerelease:
+        description: "Mark as pre-release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash dist/discord-orbs.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  discord-orbs.exe" | Out-File -Encoding ascii dist/discord-orbs.exe.sha256
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          $notes = @"
+          **Download ``discord-orbs.exe`` below, open it and choose 1 (Install).** / **Baixe o ``discord-orbs.exe`` abaixo, abra e escolha 1 (Install).**
+
+          Windows may show a SmartScreen warning because the exe is unsigned: click "More info" → "Run anyway". / O Windows pode mostrar um aviso do SmartScreen porque o exe não é assinado: clique em "Mais informações" → "Executar assim mesmo".
+
+          SHA-256: see ``discord-orbs.exe.sha256``.
+          "@
+          $flags = @()
+          if ($env:PRERELEASE -eq 'true') { $flags += '--prerelease' }
+          gh release create $env:VERSION dist/discord-orbs.exe dist/discord-orbs.exe.sha256 `
+            --target $env:GITHUB_SHA --title $env:VERSION --notes $notes --generate-notes @flags
