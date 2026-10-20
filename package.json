@@ -1,0 +1,20 @@
+{
+  "name": "discord-orbs",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Completes Discord quests from inside your own Discord client.",
+  "scripts": {
+    "autostart": "node src/cli.cjs install",
+    "autostart:remove": "node src/cli.cjs uninstall",
+    "status": "node src/cli.cjs status",
+    "build": "node scripts/build.js",
+    "check": "node --check src/quests.js && node --check src/inject.cjs && node --check src/patcher.cjs && node --check src/cli.cjs && node --check scripts/build.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "postject": "^1.0.0-alpha.6"
+  }
+}
