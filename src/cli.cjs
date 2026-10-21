@@ -2,6 +2,7 @@
 // Runs from source (`node src/cli.cjs`) or packaged as dist/discord-orbs.exe (`npm run build`).
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const readline = require("readline/promises");
 const { execFileSync, spawn } = require("child_process");
 
@@ -11,8 +12,14 @@ try {
     if (s.isSea()) sea = s;
 } catch { }
 
-const PAYLOAD = ["quests.js", "inject.cjs", "patcher.cjs"];
-const INSTALL_DIR = path.join(process.env.LOCALAPPDATA ?? "", "discord-orbs");
+const PAYLOAD = ["quests.js", "inject.cjs", "patcher.cjs", "dummy-game.cjs"];
+const BINARY_PAYLOAD = ["dummy-game-win.exe"];
+const INSTALL_DIR = process.platform === "linux"
+    ? path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share"), "discord-orbs")
+    : path.join(process.env.LOCALAPPDATA ?? os.homedir(), "discord-orbs");
+const NOT_FOUND = process.platform === "linux"
+    ? "No Discord desktop install found in your user config directory. Start Discord once, then retry."
+    : "No Discord install found in %LOCALAPPDATA%.";
 
 // Inside the exe only built-in modules can be required, so patcher.cjs runs from its asset.
 function loadPatcher() {
@@ -29,10 +36,12 @@ function payloadDir() {
     if (!sea) return __dirname;
     fs.mkdirSync(INSTALL_DIR, { recursive: true });
     for (const f of PAYLOAD) fs.writeFileSync(path.join(INSTALL_DIR, f), sea.getAsset(f, "utf8"));
+    for (const f of BINARY_PAYLOAD) fs.writeFileSync(path.join(INSTALL_DIR, f), Buffer.from(sea.getAsset(f)));
     return INSTALL_DIR;
 }
 
 function running() {
+    if (process.platform !== "win32") return [];
     let out = "";
     try { out = execFileSync("tasklist", ["/FO", "CSV", "/NH"], { encoding: "utf8" }).toLowerCase(); } catch { }
     return patcher.installs().filter(f => out.includes(`"${f.exe.toLowerCase()}"`));
@@ -50,11 +59,11 @@ async function restart(flavors) {
 
 function printStatus() {
     const installs = patcher.installs();
-    if (!installs.length) return console.log("No Discord install found in %LOCALAPPDATA%.");
+    if (!installs.length) return console.log(NOT_FOUND);
     const live = new Set(running().map(f => f.exe));
     for (const f of installs) console.log(`Discord ${f.name}${live.has(f.exe) ? " (running)" : ""}`);
     for (const { file, target } of patcher.status()) {
-        const version = file.match(/app-[^\\/]+/)?.[0];
+        const version = file.match(/(?:app-)?\d+\.\d+\.[^\\/]+/)?.[0] ?? path.basename(path.dirname(path.dirname(file)));
         console.log(`  ${version}: ${target ? `installed → ${target}` : "not installed"}`);
     }
 }
@@ -62,7 +71,7 @@ function printStatus() {
 async function install(ask) {
     const dir = payloadDir();
     const results = patcher.patch(path.join(dir, "inject.cjs"));
-    if (!results.length) throw new Error("No Discord install found in %LOCALAPPDATA%.");
+    if (!results.length) throw new Error(NOT_FOUND + " The discord_desktop_core module must be downloaded first.");
     console.log(`Installed in ${results.length} Discord version(s). Payload: ${dir}`);
     await offerRestart(ask, "apply it");
 }
@@ -75,6 +84,7 @@ async function uninstall(ask) {
 }
 
 async function offerRestart(ask, why) {
+    if (process.platform === "linux") return console.log(`Quit Discord completely and reopen it to ${why}.`);
     const live = running();
     if (!live.length) return console.log("Open Discord to use it.");
     const answer = await ask(`Restart Discord now to ${why}? [Y/n] `);
@@ -97,7 +107,7 @@ async function main() {
 
         console.log("discord-orbs\n");
         printStatus();
-        console.log("\n1) Install / update\n2) Uninstall\n3) Exit");
+        console.log("\n1) Install / update Discord\n2) Uninstall Discord\n3) Exit");
         const choice = (await ask("\nChoose: ")).trim();
         if (choice === "1") await install(ask);
         else if (choice === "2") await uninstall(ask);

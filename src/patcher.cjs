@@ -2,6 +2,7 @@
 // Used by the installer and by inject.cjs itself (to re-apply after Discord updates).
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 
 const MARKER = "// discord-orbs";
 
@@ -12,21 +13,35 @@ const FLAVORS = [
 ];
 
 function installs() {
-    const base = process.env.LOCALAPPDATA ?? "";
-    return FLAVORS
-        .map(f => ({ ...f, root: path.join(base, f.dir) }))
+    if (process.platform === "linux") {
+        const home = os.homedir();
+        const config = process.env.XDG_CONFIG_HOME || path.join(home, ".config");
+        const roots = [
+            { base: config, label: "" },
+            { base: path.join(home, ".var", "app", "com.discordapp.Discord", "config"), label: " (Flatpak)" },
+            { base: path.join(home, "snap", "discord", "current", ".config"), label: " (Snap)" }
+        ];
+        const names = ["discord", "discordptb", "discordcanary"];
+        return roots.flatMap(({ base, label }) => FLAVORS.map((f, i) => ({
+            ...f, name: f.name + label, root: path.join(base, names[i])
+        }))).filter(f => fs.existsSync(f.root));
+    }
+    if (process.platform !== "win32") return [];
+    const base = process.env.LOCALAPPDATA;
+    if (!base) return [];
+    return FLAVORS.map(f => ({ ...f, root: path.join(base, f.dir) }))
         .filter(f => fs.existsSync(f.root));
 }
 
 // Every discord_desktop_core/index.js of every installed version, old app-* folders included.
 function coreFiles() {
     return installs().flatMap(({ root }) =>
-        fs.readdirSync(root).filter(d => d.startsWith("app-")).flatMap(app => {
+        fs.readdirSync(root).filter(d => /^app-|^\d+\.\d+\./.test(d)).flatMap(app => {
             const modules = path.join(root, app, "modules");
             if (!fs.existsSync(modules)) return [];
             return fs.readdirSync(modules)
-                .filter(d => d.startsWith("discord_desktop_core-"))
-                .map(d => path.join(modules, d, "discord_desktop_core", "index.js"))
+                .filter(d => d === "discord_desktop_core" || d.startsWith("discord_desktop_core-"))
+                .map(d => path.join(modules, d, d === "discord_desktop_core" ? "" : "discord_desktop_core", "index.js"))
                 .filter(f => fs.existsSync(f));
         })
     );

@@ -20,7 +20,7 @@ writeFileSync(configPath, JSON.stringify({
     main: join(src, "cli.cjs"),
     output: blob,
     disableExperimentalSEAWarning: true,
-    assets: Object.fromEntries(["quests.js", "inject.cjs", "patcher.cjs"].map(f => [f, join(src, f)]))
+    assets: Object.fromEntries(["quests.js", "inject.cjs", "patcher.cjs", "dummy-game.cjs", "dummy-game-win.exe"].map(f => [f, join(src, f)]))
 }, null, 2));
 
 execFileSync(process.execPath, ["--experimental-sea-config", configPath], { stdio: "inherit" });

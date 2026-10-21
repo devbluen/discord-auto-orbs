@@ -2,7 +2,7 @@
 
 **English** · [Português](README.pt-BR.md)
 
-Completes Discord quests from inside your own Discord app. No Canary, Vencord or third-party client needed.
+Completes Discord quests from inside the official Discord desktop app on Windows and Linux.
 
 ## Install (easiest)
 
@@ -12,6 +12,21 @@ Completes Discord quests from inside your own Discord app. No Canary, Vencord or
 4. In Discord, open the **Quests** page. A panel appears in the bottom-right corner and starts working.
 
 To remove it: open the exe again and choose `2` (Uninstall).
+
+## Linux
+
+Use the official Discord desktop app. Install Node.js 22 or newer. Download `discord-orbs-linux.tar.gz` from [Releases](https://github.com/devbluen/discord-auto-quest/releases/latest) and extract it, or clone this repository. Then run from the extracted `discord-auto-quest` folder:
+
+```sh
+node src/cli.cjs status
+node src/cli.cjs install
+```
+
+Start Discord once before installing so its `discord_desktop_core` module exists. After installation, quit Discord completely (including the tray icon) and reopen it. Open **Quests** to see the panel. To remove the patch, run `node src/cli.cjs uninstall` and restart Discord.
+
+The installer checks the Stable, PTB and Canary user config directories, including the official Flatpak and Snap paths. The Linux install loads the payload directly from this repository's `src/` directory, so keep it in place. [Discord's FAQ says Quest rewards cannot be earned on Linux](https://support.discord.com/hc/en-us/articles/22225719947543-Discord-Quests-FAQ), but [Linux users report credited game quests](https://www.reddit.com/r/DiscordQuests/comments/1v6jpt6/how_do_i_complete_the_path_quests_on_linux/) when the official desktop app detects a Windows game process running under Wine or Proton. A live test in this repository confirmed that official Discord detected a renamed Wine executable and accepted its first game heartbeat; completion after 900 seconds has not yet been verified.
+
+For automatic game detection, install Wine and turn **Auto game** on in the panel. The Discord main process copies the bundled small `dummy-game-win.exe` under each game's published Windows executable name, launches one game at a time, and stops it after the quest finishes or fails. The dummy opens only a one-pixel offscreen window. Its source is `src/dummy-game-win.c`. On Linux, `npm run build` rebuilds it when MinGW is installed; `npm run build:dummy` requires MinGW and always rebuilds it. The release workflow builds the dummy from source and includes the whole patch in both the Windows installer and Linux archive. The toggle starts off, remembers your choice, and only appears in official Discord on Linux. Set `ORBS_DUMMY_EXE` when launching Discord if you want to use a different Windows executable. You can also leave the toggle off and start a game under Wine or Proton yourself. Discord must detect the game before this script accepts or tracks its quest.
 
 ## Build it yourself
 
@@ -43,7 +58,7 @@ and open the new exe again (`1`, Install / update).
 
 - Automatically accepts the quests it can complete (the **Auto-accept** button in the panel).
 - Order: quests that give the most orbs per remaining minute first, then quests without orbs, shortest first.
-- The panel shows the queue, progress and errors. Its buttons are **Check now**, **Pause**, **Copy report** and **Claim**, which opens the Quests page so you can claim the reward.
+- The panel shows the queue, progress and errors. Its buttons are **Check now**, **Pause**, **Copy report** and **Claim**, which opens the Quests page so you can claim the reward. On official Discord for Linux, **Auto game** controls Wine dummy processes.
 - A red badge on the panel (even minimized) counts the rewards ready to claim; hover it for the total orbs.
 - Desktop notifications when a quest finishes, fails, or the whole queue is done. Clicking one opens the Quests page. Toggle them with **Notifications** in the panel.
 - When Discord updates, the script re-applies itself to the new version if that version was already downloaded when Discord closed. If the panel disappears after an update, open the exe and install again.
@@ -51,7 +66,7 @@ and open the new exe again (`1`, Install / update).
 | Type | How |
 | --- | --- |
 | `WATCH_VIDEO` / `WATCH_VIDEO_ON_MOBILE` | sends video progress within the server's time limit |
-| `PLAY_ON_DESKTOP` | fakes the game's process; Discord itself sends the heartbeats |
+| `PLAY_ON_DESKTOP` | on official Discord for Windows, fakes the game's process; on official Discord for Linux, tracks a game Discord has detected |
 | `PLAY_ACTIVITY` | sends a heartbeat every 20 s using a DM or voice channel |
 
 Not supported: `STREAM_ON_DESKTOP` (needs a real Go Live with someone else in the call) and achievement quests.
@@ -74,13 +89,13 @@ Click **Copy report** in the panel and paste it into a new [issue](https://githu
 | `src/patcher.cjs` | Finds Discord installs and adds/removes the line in `discord_desktop_core/index.js` that loads `inject.cjs` |
 | `src/cli.cjs` | Installer (menu and commands); the exe's entry point |
 | `scripts/build.js` | Builds the exe as a Node single executable application |
-| `.github/workflows/release.yml` | Manual workflow that builds the exe and publishes a release |
+| `.github/workflows/release.yml` | Manual workflow that builds the Windows installer and Linux archive, then publishes both |
 
 ## Security
 
 - Never reads or sends your token: requests go through Discord's own internal HTTP client, to `discord.com` only.
 - No debug port, and no code downloaded from anywhere.
-- Each release ships a `discord-orbs.exe.sha256` checksum; it's built by GitHub Actions from the public source.
+- Each release ships SHA-256 checksums for the Windows installer and Linux archive; both are built by GitHub Actions from the public source.
 
 **This violates Discord's Terms of Service.** Your account may have quests suspended or be banned. Use at your own risk.
 

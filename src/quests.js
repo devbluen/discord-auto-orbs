@@ -27,6 +27,7 @@
         phase: "loading",     // loading | ready | error
         error: null,
         paused: false,
+        destroyed: false,
         gen: 0,               // bumped on pause; tasks from older generations stop on their own
         current: null,        // { id, progress, target }
         nextCheck: 0,
@@ -38,6 +39,8 @@
     const enrollFailed = new Map(); // questId -> reason
     const overrides = new Map();    // questId -> userStatus returned by enroll (the store can lag behind)
     let autoAccept = true;
+    let autoDummy = false;
+    try { autoDummy = localStorage.getItem("orbs.autoDummy") === "true"; } catch { }
     let notifications = true;
     let finishedSinceIdle = 0;      // quests completed since the queue was last empty
 
@@ -45,6 +48,7 @@
         state.wake?.();
     }
 
+    let removeQuestListener, changeTimer;
     window.orbs = {
         get running() { return state.phase === "ready" && !state.paused; },
         check() {
@@ -59,6 +63,16 @@
             for (const fn of state.cleanups) try { fn(); } catch { }
             state.cleanups.clear();
             log("Paused.");
+        },
+        destroy() {
+            if (state.destroyed) return;
+            this.stop();
+            state.destroyed = true;
+            clearTimeout(changeTimer);
+            removeQuestListener?.();
+            panel.destroy();
+            wake();
+            delete window.orbs;
         },
         start() {
             state.paused = false;
@@ -153,11 +167,14 @@
     }
 
     // Injected at startup, the script runs before Discord finishes loading: wait for the modules.
+    const isDesktop = typeof window.DiscordNative !== "undefined" ||
+        (typeof IS_DISCORD_DESKTOP !== "undefined" && IS_DISCORD_DESKTOP);
     let mods, attempt = 0;
-    for (; ;) {
+    for (; !state.destroyed ;) {
         mods = resolveModules(attempt >= 20);
         const missing = mods
-            ? Object.entries(mods).filter(([, v]) => !v || (Array.isArray(v) && !v.length)).map(([k]) => k)
+            ? Object.entries(mods).filter(([k, v]) =>
+                k !== "RunningGameStore" && (!v || (Array.isArray(v) && !v.length))).map(([k]) => k)
             : ["webpack"];
         if (!missing.length) break;
         state.error = `attempt ${attempt + 1}/40, missing: ${missing.join(", ")}`;
@@ -168,30 +185,39 @@
         }
         await sleep(3000);
     }
+    if (state.destroyed) return;
     const { QuestsStore, RunningGameStore, ChannelStore, GuildChannelStore, Dispatcher } = mods;
 
     // The API client is whichever candidate answers /users/@me with your user (a harmless GET).
     let api = null;
     for (const candidate of mods.api) {
+        if (state.destroyed) return;
         try {
             const res = await candidate.get({ url: "/users/@me" });
             if (res?.body?.id) { api = candidate; break; }
         } catch { }
     }
+    if (state.destroyed) return;
     if (!api) {
         state.phase = "error";
         state.error = `API client not found (${mods.api.length} candidate(s), none answered /users/@me)`;
         return warn(state.error);
     }
     state.phase = "ready";
+    state.error = null;
 
     // Diagnostics: `copy(orbs.debug())` in the console copies the quests' shape (no token).
     window.orbs.debug = () => JSON.stringify({
         store: QuestsStore.getName?.(),
         questsType: Object.prototype.toString.call(QuestsStore.quests),
+        autoGame: autoDummy,
+        detectedGames: (RunningGameStore?.getRunningGames?.() ?? []).map(game => ({
+            id: game.id, name: game.name, exeName: game.exeName
+        })),
         quests: allQuests().slice(0, 8).map(q => ({
             id: q.id,
             name: nameOf(q),
+            gameAppId: gameAppIdOf(q) ?? null,
             keys: Object.keys(q),
             userStatus: q.userStatus ?? q.user_status ?? null,
             override: overrides.get(q.id) ?? null,
@@ -205,10 +231,46 @@
 
     /* ── quests ──────────────────────────────────────────────── */
 
-    const isDesktop = typeof window.DiscordNative !== "undefined";
-    const SUPPORTED = ["WATCH_VIDEO", "WATCH_VIDEO_ON_MOBILE", "PLAY_ON_DESKTOP", "PLAY_ACTIVITY"];
+    // The official Linux client uses a game process detected by Discord.
+    const isLinux = /Linux/i.test(navigator.userAgent);
+    const canRunGame = isDesktop && !!RunningGameStore;
+    const SUPPORTED = canRunGame
+        ? ["WATCH_VIDEO", "WATCH_VIDEO_ON_MOBILE", "PLAY_ON_DESKTOP", "PLAY_ACTIVITY"]
+        : ["WATCH_VIDEO", "WATCH_VIDEO_ON_MOBILE", "PLAY_ACTIVITY"];
 
     const taskConfigOf = q => q.config.taskConfig ?? q.config.taskConfigV2;
+    const gameAppIdOf = q => taskConfigOf(q)?.tasks?.PLAY_ON_DESKTOP?.applications?.[0]?.id ?? q.config.application?.id;
+    const detectedGameOf = q => {
+        const id = gameAppIdOf(q);
+        return id == null ? null : (RunningGameStore?.getRunningGames?.() ?? [])
+            .find(game => String(game.id) === String(id)) ?? null;
+    };
+    const gameAppCache = new Map();
+    // The Linux main process polls this to launch one Wine dummy for the next game quest.
+    window.orbs.dummyPlan = async () => {
+        if (!isLinux || !canRunGame || !autoDummy || state.paused || state.destroyed ||
+            [...failed.values()].some(reason => /401|unauthori[sz]ed/i.test(reason))) return null;
+        const games = allQuests().filter(q =>
+            pickTask(q) === "PLAY_ON_DESKTOP" && !statusOf(q).completedAt &&
+            !done.has(q.id) && !failed.has(q.id) &&
+            (statusOf(q).enrolledAt || autoAccept)).sort(byPriority);
+        const q = games.find(q => q.id === state.current?.id) ?? games[0];
+        if (!q) return null;
+        const appId = gameAppIdOf(q);
+        if (!appId) return null;
+        if (!gameAppCache.has(appId))
+            gameAppCache.set(appId, api.get({ url: `/applications/public?application_ids=${appId}` })
+                .then(res => res.body?.[0] ?? null).catch(() => {
+                    gameAppCache.delete(appId);
+                    return null;
+                }));
+        const app = await gameAppCache.get(appId);
+        if (!autoDummy || state.paused || state.destroyed) return null;
+        const exeName = app?.executables?.find(x => x.os === "win32")?.name;
+        if (!exeName) return null;
+        return { questId: q.id, appId, exeName, name: app.name, running: !!detectedGameOf(q) };
+    };
+    window.orbs.dummyEvent = message => log(message);
     const pickTask = q => SUPPORTED.find(t => taskConfigOf(q)?.tasks?.[t]) ?? null;
     const targetOf = (q, task) => taskConfigOf(q)?.tasks?.[task]?.target ?? 0;
     // Store userStatus, also accepting the API's snake_case shape.
@@ -245,7 +307,8 @@
         // HTML responses (the website's error page) collapse to their <title>.
         if (/<html/i.test(msg)) msg = `HTML: ${msg.match(/<title>([^<]*)/i)?.[1]?.trim() ?? "error page"}`;
         msg = msg.slice(0, 300);
-        return e?.status ? `${e.status} ${msg}` : msg;
+        const code = e?.body?.code ?? e?.code;
+        return `${e?.status ? `${e.status} ` : ""}${code != null ? `code ${code}: ` : ""}${msg}`;
     };
 
     // Orb quests first, best orbs-per-second first; then the rest, shortest first.
@@ -275,6 +338,7 @@
         !done.has(q.id) &&
         !failed.has(q.id) &&
         pickTask(q) &&
+        (pickTask(q) !== "PLAY_ON_DESKTOP" || !isLinux || detectedGameOf(q)) &&
         !waitingStore(q)
     ).sort(byPriority);
 
@@ -284,7 +348,8 @@
     const toEnroll = () => allQuests().filter(q =>
         !statusOf(q).enrolledAt &&
         !enrollFailed.has(q.id) &&
-        pickTask(q)
+        pickTask(q) &&
+        (pickTask(q) !== "PLAY_ON_DESKTOP" || !isLinux || detectedGameOf(q))
     ).sort(byPriority);
 
     // Same body the client sends on "Accept Quest"; the returned userStatus is snake_case
@@ -322,15 +387,20 @@
 
     // Discord only fetches quests when the Quests page opens (or on enroll):
     // react to any store change instead of waiting for the next cycle.
-    let changeTimer;
-    QuestsStore.addChangeListener?.(() => {
+    const onQuestChange = () => {
         clearTimeout(changeTimer);
         changeTimer = setTimeout(() => { if (!state.current) wake(); }, 1500);
-    });
+    };
+    QuestsStore.addChangeListener?.(onQuestChange);
+    if (isLinux && canRunGame) Dispatcher.subscribe?.("RUNNING_GAMES_CHANGE", onQuestChange);
+    removeQuestListener = () => {
+        QuestsStore.removeChangeListener?.(onQuestChange);
+        if (isLinux && canRunGame) Dispatcher.unsubscribe?.("RUNNING_GAMES_CHANGE", onQuestChange);
+    };
 
     log("Ready. Panel in the bottom-right corner; orbs.check() forces a check.");
 
-    for (; ;) {
+    for (; !state.destroyed ;) {
         const e = state.paused || !autoAccept ? null : toEnroll()[0];
         if (e) {
             await enroll(e);
@@ -360,7 +430,7 @@
         const task = pickTask(q);
         const target = targetOf(q, task);
         const gen = state.gen;
-        const alive = () => !state.paused && state.gen === gen;
+        const alive = () => !state.destroyed && !state.paused && state.gen === gen;
         const report = progress => { state.current = { id: q.id, progress, target }; };
 
         log(`"${name}" → ${task} (${progressOf(q, task)}/${target}s, ${orbsOf(q)} orbs)`);
@@ -411,76 +481,110 @@
 
     // Fakes the game's process running; Discord itself sends the quest heartbeats.
     async function doGame(q, task, target, alive, report) {
-        if (!isDesktop) throw new Error("game quests only work in the desktop app, not the browser");
+        if (!canRunGame) throw new Error("game detection is unavailable in this client");
 
-        const appId = taskConfigOf(q).tasks[task].applications?.[0]?.id ?? q.config.application?.id;
+        const appId = gameAppIdOf(q);
         if (!appId) throw new Error("quest has no application id");
 
         const res = await api.get({ url: `/applications/public?application_ids=${appId}` });
         const app = res.body?.[0];
         if (!app) throw new Error("application not found");
-        const exeName = app.executables?.find(x => x.os === "win32")?.name?.replace(">", "") ?? `${app.name}.exe`;
+        const nativeGame = detectedGameOf(q);
+        if (isLinux && !nativeGame)
+            throw new Error(`Start ${app.name} under Wine/Proton and wait for Discord to detect it, then press Check now`);
+        const executable = app.executables?.find(x => x.os === "win32");
+        const exeName = executable?.name?.replace(">", "") ?? `${app.name}.exe`;
+        const exePath = `c:/program files/${app.name.toLowerCase()}/${exeName}`;
 
         const pid = Math.floor(Math.random() * 30000) + 1000;
         const fakeGame = {
             cmdLine: `C:\\Program Files\\${app.name}\\${exeName}`,
             exeName,
-            exePath: `c:/program files/${app.name.toLowerCase()}/${exeName}`,
+            exePath,
             hidden: false,
             isLauncher: false,
             id: appId,
+            executables: [{ os: "win32", name: exeName, is_launcher: false }],
             name: app.name,
+            overlay: false,
             pid,
             pidPath: [pid],
             processName: app.name,
+            sandboxed: false,
             start: Date.now()
         };
 
-        // Newer builds also decide eligibility through these getters; patch whichever exist.
-        const realGames = RunningGameStore.getRunningGames();
+        // Keep Discord's native detection when a real process is already visible.
+        const realGames = RunningGameStore.getRunningGames() ?? [];
+        const withFake = games => [...(games ?? []), fakeGame];
         const patches = {
-            getRunningGames: () => [fakeGame],
-            getGameForPID: p => (p === pid ? fakeGame : null),
+            getRunningGames: (...args) => withFake(originals.getRunningGames.apply(RunningGameStore, args)),
+            getGameForPID: (p, ...args) => p === pid ? fakeGame : originals.getGameForPID.call(RunningGameStore, p, ...args),
             getVisibleGame: () => fakeGame,
-            getVisibleRunningGames: () => [fakeGame],
-            getCandidateGames: () => [fakeGame],
-            getRunningDiscordApplicationIds: () => [appId]
+            getVisibleRunningGames: (...args) => withFake(originals.getVisibleRunningGames.apply(RunningGameStore, args)),
+            getCandidateGames: (...args) => withFake(originals.getCandidateGames.apply(RunningGameStore, args)),
+            getRunningDiscordApplicationIds: (...args) => {
+                const ids = originals.getRunningDiscordApplicationIds.apply(RunningGameStore, args);
+                return ids instanceof Set ? new Set([...ids, appId]) : [...(ids ?? []), appId];
+            }
         };
         const originals = {};
-        for (const [k, fn] of Object.entries(patches)) {
-            if (typeof RunningGameStore[k] !== "function") continue;
-            originals[k] = RunningGameStore[k];
-            RunningGameStore[k] = fn;
+        if (!nativeGame) {
+            for (const [k, fn] of Object.entries(patches)) {
+                if (typeof RunningGameStore[k] !== "function") continue;
+                originals[k] = RunningGameStore[k];
+                RunningGameStore[k] = fn;
+            }
+            Dispatcher.dispatch({ type: "RUNNING_GAMES_CHANGE", removed: [], added: [fakeGame], games: withFake(realGames) });
         }
-        Dispatcher.dispatch({ type: "RUNNING_GAMES_CHANGE", removed: realGames, added: [fakeGame], games: [fakeGame] });
 
-        let resolveDone, lastBeat = Date.now(), progress = progressOf(q, task);
+        let resolveDone, lastBeat = Date.now(), progress = progressOf(q, task), beatError = null, beatFailures = 0;
         const finished = new Promise(r => (resolveDone = r));
         const onBeat = data => {
             if (data.questId !== q.id) return;
             lastBeat = Date.now();
+            beatFailures = 0;
             progress = q.config.configVersion === 1
                 ? data.userStatus.streamProgressSeconds
                 : Math.floor(data.userStatus.progress?.[task]?.value ?? 0);
             report(progress);
             if (progress >= target) resolveDone();
         };
+        const onBeatFailure = data => {
+            if (data.questId !== q.id) return;
+            const error = data.error ?? data;
+            beatFailures++;
+            const status = error.status ?? error.httpStatus;
+            if ((status !== 429 && status >= 400 && status < 500) || beatFailures >= 5) {
+                beatError = errMsg(error);
+                resolveDone();
+            } else {
+                // Discord schedules another attempt on its own next heartbeat tick.
+                if (progress > 0) lastBeat = Date.now();
+                warn(`  game heartbeat attempt ${beatFailures} failed: ${errMsg(error)}; waiting for the next attempt.`);
+            }
+        };
         Dispatcher.subscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", onBeat);
+        Dispatcher.subscribe("QUESTS_SEND_HEARTBEAT_FAILURE", onBeatFailure);
 
         let cleaned = false;
         const cleanup = () => {
             if (cleaned) return;
             cleaned = true;
             Dispatcher.unsubscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", onBeat);
-            Object.assign(RunningGameStore, originals);
-            Dispatcher.dispatch({ type: "RUNNING_GAMES_CHANGE", removed: [fakeGame], added: [], games: RunningGameStore.getRunningGames() });
+            Dispatcher.unsubscribe("QUESTS_SEND_HEARTBEAT_FAILURE", onBeatFailure);
+            if (!nativeGame) {
+                Object.assign(RunningGameStore, originals);
+                Dispatcher.dispatch({ type: "RUNNING_GAMES_CHANGE", removed: [fakeGame], added: [], games: RunningGameStore.getRunningGames() });
+            }
             resolveDone();
         };
         state.cleanups.add(cleanup);
 
-        log(`  faking "${app.name}" running (~${Math.ceil((target - progress) / 60)} min).`);
+        log(`  ${nativeGame ? "monitoring detected" : "faking"} "${app.name}" running (~${Math.ceil((target - progress) / 60)} min).`);
         try {
             while (alive() && progress < target) {
+                if (beatError) throw new Error(`Discord rejected the game heartbeat: ${beatError}`);
                 if (Date.now() - lastBeat > 3 * 60_000) throw new Error("Discord sent no heartbeat for 3 min");
                 await Promise.race([finished, sleep(5000)]);
             }
@@ -491,17 +595,19 @@
     }
 
     async function doActivity(q, task, target, alive, report) {
+        const appId = taskConfigOf(q).tasks[task].applications?.[0]?.id ?? q.config.application?.id;
         const channelId = ChannelStore.getSortedPrivateChannels()[0]?.id
             ?? Object.values(GuildChannelStore.getAllGuilds()).find(g => g?.VOCAL?.length)?.VOCAL[0].channel.id;
         if (!channelId) throw new Error("no channel available for the heartbeat");
         const streamKey = `call:${channelId}:1`;
+        const body = { stream_key: streamKey, application_id: String(appId ?? ""), terminal: false };
 
         while (alive()) {
-            const res = await api.post({ url: `/quests/${q.id}/heartbeat`, body: { stream_key: streamKey, terminal: false } });
+            const res = await api.post({ url: `/quests/${q.id}/heartbeat`, body });
             const progress = res.body?.progress?.[task]?.value ?? 0;
             report(progress);
             if (progress >= target) {
-                await api.post({ url: `/quests/${q.id}/heartbeat`, body: { stream_key: streamKey, terminal: true } });
+                await api.post({ url: `/quests/${q.id}/heartbeat`, body: { ...body, terminal: true } });
                 break;
             }
             await sleep(20_000);
@@ -552,6 +658,10 @@
         const pauseBtn = el("button", "sec", "Pause");
         const acceptBtn = el("button", "sec");
         acceptBtn.title = "Automatically accept the quests the script can complete";
+        const dummyBtn = /Linux/i.test(navigator.userAgent) &&
+            typeof window.DiscordNative !== "undefined"
+            ? el("button", "sec") : null;
+        if (dummyBtn) dummyBtn.title = "Launch Wine dummy processes for game quests, one at a time";
         header.append(title, checkBtn, pauseBtn);
         const status = el("div", "status");
         const copyBtn = el("button", "sec", "Copy report");
@@ -561,7 +671,7 @@
         options.style.display = "flex";
         options.style.flexWrap = "wrap";
         options.style.gap = "6px";
-        options.append(acceptBtn, notifyBtn, copyBtn);
+        options.append(acceptBtn, ...(dummyBtn ? [dummyBtn] : []), notifyBtn, copyBtn);
         const list = el("ul");
         // Unread-style counter of rewards ready to claim, visible even when minimized.
         const badge = el("span", "badge");
@@ -668,6 +778,12 @@
             if (autoAccept) wake();
             render();
         });
+        dummyBtn?.addEventListener("click", () => {
+            autoDummy = !autoDummy;
+            try { localStorage.setItem("orbs.autoDummy", String(autoDummy)); } catch { }
+            if (autoDummy) wake();
+            render();
+        });
         pauseBtn.addEventListener("click", () => {
             state.paused ? window.orbs.start() : window.orbs.stop();
             render();
@@ -680,6 +796,10 @@
 
         function questRow(q, queuePos) {
             const task = pickTask(q);
+            const gameOnly = !task && !!taskConfigOf(q)?.tasks?.PLAY_ON_DESKTOP;
+            const unsupported = gameOnly
+                ? "game detection unavailable in this client"
+                : `unsupported (${Object.keys(taskConfigOf(q)?.tasks ?? {}).join(", ")})`;
             const target = targetOf(q, task);
             const cur = state.current?.id === q.id ? state.current : null;
             const us = statusOf(q);
@@ -694,14 +814,18 @@
                 rank = 6; text = `${reward}reward claimed`; cls = "ok";
             } else if (us.completedAt || done.has(q.id)) {
                 rank = 5; text = `${reward}completed · reward waiting`; cls = "ok";
+            } else if (isLinux && task === "PLAY_ON_DESKTOP" && !detectedGameOf(q)) {
+                rank = 3; text = autoDummy
+                    ? "launching Wine dummy; waiting for Discord to detect it"
+                    : "start the game under Wine/Proton; waiting for Discord to detect it";
             } else if (!us.enrolledAt && enrollFailed.has(q.id)) {
                 rank = 2; text = `failed to accept: ${enrollFailed.get(q.id)}`; cls = "err";
             } else if (!us.enrolledAt && task && autoAccept) {
                 rank = 1; text = `${reward}queued · will be accepted automatically`;
             } else if (!us.enrolledAt) {
-                rank = 3; text = task ? "not accepted · turn on auto-accept or accept it manually" : "not accepted · unsupported type";
+                rank = 3; text = task ? "not accepted · turn on auto-accept or accept it manually" : `not accepted · ${unsupported}`;
             } else if (!task) {
-                rank = 4; text = `unsupported (${Object.keys(taskConfigOf(q)?.tasks ?? {}).join(", ")})`;
+                rank = 4; text = unsupported;
             } else if (waitingStore(q)) {
                 rank = 1; text = `${reward}accepted · reopen the Quests page (or Ctrl+R) so Discord starts the game`;
             } else if (failed.has(q.id)) {
@@ -745,6 +869,7 @@
             title.textContent = `orbs · ${summary}`;
             pauseBtn.textContent = state.paused ? "Resume" : "Pause";
             acceptBtn.textContent = `Auto-accept: ${autoAccept ? "on" : "off"}`;
+            if (dummyBtn) dummyBtn.textContent = `Auto game: ${autoDummy ? "on" : "off"}`;
             notifyBtn.textContent = `Notifications: ${notifications ? "on" : "off"}`;
             checkBtn.disabled = pauseBtn.disabled = acceptBtn.disabled = state.phase !== "ready";
 
@@ -776,8 +901,11 @@
             list.replaceChildren(...rows.map(r => r.li));
         }
 
-        setInterval(render, 1000);
+        const renderTimer = setInterval(render, 1000);
         render();
-        return { openQuests: () => openQuest() };
+        return {
+            openQuests: () => openQuest(),
+            destroy: () => { clearInterval(renderTimer); panel.remove(); style.remove(); }
+        };
     }
 })();
