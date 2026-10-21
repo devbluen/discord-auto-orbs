@@ -14,6 +14,13 @@ function executablePath(name) {
     return parts;
 }
 
+function gameDirectory(name) {
+    if (typeof name !== "string") throw new Error("Game has no application name");
+    const safe = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/[. ]+$/g, "").trim();
+    if (!safe || safe === "." || safe === "..") throw new Error("Invalid game application name");
+    return safe;
+}
+
 function findSource() {
     const candidates = [
         process.env.ORBS_DUMMY_EXE,
@@ -32,6 +39,7 @@ function createRunner({ source = findSource(), dataDir = path.join(process.env.X
     log = console.log } = {}) {
     let current = null;
     let cooldownUntil = 0;
+    const events = [];
     const prefix = path.join(dataDir, ".wineprefix");
 
     function stop() {
@@ -48,25 +56,39 @@ function createRunner({ source = findSource(), dataDir = path.join(process.env.X
         if (!/^\d+$/.test(String(plan.appId)) || !/^\d+$/.test(String(plan.questId)))
             throw new Error("Invalid quest or application ID");
         const parts = executablePath(plan.exeName);
-        if (current?.questId === plan.questId) return;
+        if (current?.questId === plan.questId) {
+            if (!plan.running && !current.warned && Date.now() - current.startedAt > 20_000) {
+                current.warned = true;
+                events.push(`Wine dummy is still running, but Discord has not detected ${plan.name} after 20 seconds.`);
+            }
+            return;
+        }
         stop();
         if (plan.running || Date.now() < cooldownUntil) return;
         if (!source) throw new Error("Bundled dummy-game-win.exe was not found; set ORBS_DUMMY_EXE to a Windows executable");
 
-        const file = path.join(dataDir, String(plan.appId), ...parts);
+        // Discord's executable rules can include the game installation directory.
+        const file = path.join(dataDir, String(plan.appId), gameDirectory(plan.name), ...parts);
         fs.mkdirSync(path.dirname(file), { recursive: true });
         fs.copyFileSync(source, file);
         const child = start("wine", [file], {
-            stdio: "ignore", detached: true, env: { ...process.env, WINEPREFIX: prefix }
+            stdio: ["ignore", "ignore", "pipe"], detached: true,
+            env: { ...process.env, WINEPREFIX: prefix }
         });
-        current = { questId: plan.questId, child };
+        current = { questId: plan.questId, child, startedAt: Date.now(), warned: false };
+        let stderr = "";
+        child.stderr?.on("data", chunk => {
+            stderr = (stderr + chunk.toString()).slice(-1000);
+        });
         const message = `Started Wine dummy for ${plan.name}: ${file}`;
         log(`[orbs] ${message}`);
-        child.on("exit", () => {
+        child.on("exit", (code, signal) => {
             if (current?.child === child) {
                 current = null;
                 try { stopPrefix(prefix); } catch { }
                 cooldownUntil = Date.now() + 30_000;
+                const detail = stderr.trim().replace(/\s+/g, " ").slice(-300);
+                events.push(`Wine dummy exited (code ${code ?? "none"}, signal ${signal ?? "none"})${detail ? `: ${detail}` : ""}`);
             }
         });
         child.on("error", error => {
@@ -75,12 +97,13 @@ function createRunner({ source = findSource(), dataDir = path.join(process.env.X
                 try { stopPrefix(prefix); } catch { }
             }
             cooldownUntil = Date.now() + 30_000;
+            events.push(`Wine dummy failed: ${error.message}`);
             log(`[orbs] Wine dummy failed: ${error.message}`);
         });
         return message;
     }
 
-    return { ensure, stop };
+    return { ensure, stop, drainEvents: () => events.splice(0) };
 }
 
-module.exports = { executablePath, findSource, createRunner };
+module.exports = { executablePath, gameDirectory, findSource, createRunner };

@@ -20,9 +20,9 @@ function watchDummyGames(win) {
         try {
             const plan = await win.webContents.executeJavaScript("window.orbs?.dummyPlan?.() ?? null");
             const message = dummyRunner.ensure(plan);
-            if (message) {
+            for (const event of [message, ...dummyRunner.drainEvents()].filter(Boolean)) {
                 lastDummyError = null;
-                win.webContents.executeJavaScript(`window.orbs?.dummyEvent?.(${JSON.stringify(message)})`).catch(() => {});
+                win.webContents.executeJavaScript(`window.orbs?.dummyEvent?.(${JSON.stringify(event)})`).catch(() => {});
             }
         } catch (e) {
             console.error("[orbs] Auto game:", e);
