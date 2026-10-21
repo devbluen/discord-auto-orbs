@@ -11,7 +11,7 @@
     "prebuild": "node scripts/build-dummy.js",
     "build": "node scripts/build.js",
     "build:dummy": "node scripts/build-dummy.js --required",
-    "check": "node --check src/quests.js && node --check src/inject.cjs && node --check src/dummy-game.cjs && node --check src/patcher.cjs && node --check src/cli.cjs && node --check scripts/build.js && node --check scripts/build-dummy.js && node --test test/*.test.cjs"
+    "check": "node --check src/quests.js && node --check src/inject.cjs && node --check src/dummy-game.cjs && node --check src/patcher.cjs && node --check src/updates.cjs && node --check src/cli.cjs && node --check scripts/build.js && node --check scripts/build-dummy.js && node --test test/*.test.cjs"
   },
   "engines": {
     "node": ">=22"

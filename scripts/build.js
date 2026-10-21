@@ -14,7 +14,7 @@ const configPath = join(dist, "sea-config.json");
 const exe = join(dist, process.platform === "win32" ? "discord-orbs.exe" : "discord-orbs");
 
 // The Wine dummy only matters on Linux; the Windows exe never carries it.
-const payload = ["quests.js", "inject.cjs", "patcher.cjs"];
+const payload = ["quests.js", "inject.cjs", "patcher.cjs", "updates.cjs"];
 if (process.platform === "linux") {
     payload.push("dummy-game.cjs");
     if (existsSync(join(src, "dummy-game-win.exe"))) payload.push("dummy-game-win.exe");
@@ -23,11 +23,16 @@ if (process.platform === "linux") {
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist);
 
+// The exe has no package.json next to it, so the version (used by the update check) ships as an asset.
+const versionPath = join(dist, "version.json");
+const { version } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+writeFileSync(versionPath, JSON.stringify({ version }));
+
 writeFileSync(configPath, JSON.stringify({
     main: join(src, "cli.cjs"),
     output: blob,
     disableExperimentalSEAWarning: true,
-    assets: Object.fromEntries(payload.map(f => [f, join(src, f)]))
+    assets: { ...Object.fromEntries(payload.map(f => [f, join(src, f)])), "version.json": versionPath }
 }, null, 2));
 
 execFileSync(process.execPath, ["--experimental-sea-config", configPath], { stdio: "inherit" });
@@ -38,4 +43,5 @@ await postject.inject(exe, "NODE_SEA_BLOB", readFileSync(blob), {
 
 rmSync(blob);
 rmSync(configPath);
+rmSync(versionPath);
 console.log(`\nBuilt ${exe}`);

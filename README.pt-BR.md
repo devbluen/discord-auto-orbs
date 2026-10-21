@@ -50,6 +50,7 @@ e abra o exe novo (`1`, Install / update).
 - O painel mostra a fila, o progresso e os erros. Os botões são **Check now** (verificar agora), **Pause** (pausar), **Copy report** (copiar relatório) e **Claim** (abre a página de missões para resgatar a recompensa).
 - Uma bolinha vermelha no painel (mesmo minimizado) conta as recompensas prontas para resgatar; passe o mouse para ver o total de orbs.
 - Notificações na área de trabalho quando uma missão termina, falha ou quando a fila inteira acaba. Clicar numa delas abre a página de missões. Ligue/desligue em **Notifications** no painel.
+- Verificação de atualização: a cada 6 horas procura uma [release](https://github.com/devbluen/discord-auto-quest/releases) mais nova. Se houver, o painel mostra **Update available** com um botão **Download** e manda uma notificação na área de trabalho (uma vez por versão). O menu do exe também avisa.
 - Quando o Discord atualiza, o script se reaplica sozinho na versão nova se ela já estiver baixada quando o Discord fechar. Se o painel sumir depois de uma atualização, abra o exe e instale de novo.
 
 | Tipo | Como |
@@ -82,7 +83,8 @@ Clique em **Copy report** no painel e cole numa nova [issue](https://github.com/
 
 ## Segurança
 
-- Não lê nem envia seu token: as requisições passam pelo cliente HTTP interno do Discord, só para `discord.com`.
+- Não lê nem envia seu token: as requisições das missões passam pelo cliente HTTP interno do Discord, só para `discord.com`.
+- A única outra requisição é a verificação de atualização: um GET anônimo para `api.github.com/repos/devbluen/discord-auto-quest/releases/latest`, sem nenhum dado do Discord.
 - Sem porta de debug e sem baixar código de fora.
 - Cada release vem com um checksum `discord-orbs.exe.sha256`; o exe é gerado pelo GitHub Actions a partir do código público.
 

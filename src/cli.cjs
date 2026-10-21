@@ -14,7 +14,7 @@ try {
 
 // The Wine dummy is Linux-only; the build leaves it out of the Windows exe (see scripts/build.js).
 const LINUX = process.platform === "linux";
-const PAYLOAD = ["quests.js", "inject.cjs", "patcher.cjs", ...(LINUX ? ["dummy-game.cjs"] : [])];
+const PAYLOAD = ["quests.js", "inject.cjs", "patcher.cjs", "updates.cjs", "version.json", ...(LINUX ? ["dummy-game.cjs"] : [])];
 const BINARY_PAYLOAD = LINUX ? ["dummy-game-win.exe"] : [];
 const INSTALL_DIR = process.platform === "linux"
     ? path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share"), "discord-orbs")
@@ -23,14 +23,16 @@ const NOT_FOUND = process.platform === "linux"
     ? "No Discord desktop install found in your user config directory. Start Discord once, then retry."
     : "No Discord install found in %LOCALAPPDATA%.";
 
-// Inside the exe only built-in modules can be required, so patcher.cjs runs from its asset.
-function loadPatcher() {
-    if (!sea) return require("./patcher.cjs");
+// Inside the exe only built-in modules can be required, so helper modules run from their assets.
+function load(name) {
+    if (!sea) return require(`./${name}`);
     const mod = { exports: {} };
-    new Function("module", "exports", "require", sea.getAsset("patcher.cjs", "utf8"))(mod, mod.exports, require);
+    new Function("module", "exports", "require", "__dirname", sea.getAsset(name, "utf8"))(mod, mod.exports, require, INSTALL_DIR);
     return mod.exports;
 }
-const patcher = loadPatcher();
+const patcher = load("patcher.cjs");
+const updates = load("updates.cjs");
+const VERSION = sea ? JSON.parse(sea.getAsset("version.json", "utf8")).version : updates.currentVersion(__dirname);
 
 // Packaged: the payload is extracted to %LOCALAPPDATA%\discord-orbs. From source: Discord
 // loads straight from this repo's src/, so edits apply with a Ctrl+R in Discord.
@@ -109,7 +111,9 @@ async function main() {
         if (command === "status") return printStatus();
         if (command) throw new Error(`Unknown command "${command}". Use install, uninstall or status.`);
 
-        console.log("discord-orbs\n");
+        console.log(`discord-orbs v${VERSION}\n`);
+        const update = await updates.checkForUpdate(VERSION);
+        if (update) console.log(`New version available: v${update.latest}\nDownload: ${update.url}\n`);
         printStatus();
         console.log("\n1) Install / update Discord\n2) Uninstall Discord\n3) Exit");
         const choice = (await ask("\nChoose: ")).trim();

@@ -4,6 +4,22 @@ const { app } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const { patch } = require("./patcher.cjs");
+const { checkForUpdate } = require("./updates.cjs");
+
+const UPDATE_EVERY_MS = 6 * 60 * 60_000;
+let lastUpdateCheck = 0;
+let update = null;
+const updateTimers = new WeakSet();
+
+// Asks GitHub at most every 6 h and hands any newer release to the panel (window.orbs.updateAvailable).
+async function announceUpdate(win) {
+    if (Date.now() - lastUpdateCheck > UPDATE_EVERY_MS) {
+        lastUpdateCheck = Date.now();
+        update = await checkForUpdate();
+    }
+    if (!update || win.isDestroyed()) return;
+    win.webContents.executeJavaScript(`window.orbs?.updateAvailable?.(${JSON.stringify(update)})`).catch(() => {});
+}
 
 const SCRIPT = path.join(__dirname, "quests.js");
 const dummyRunner = process.platform === "linux" ? require("./dummy-game.cjs").createRunner() : null;
@@ -47,6 +63,13 @@ app.on("browser-window-created", (_, win) => {
         try { code = fs.readFileSync(SCRIPT, "utf8"); } catch { return; }
         win.webContents.executeJavaScript(code).catch(e => console.error("[orbs]", e));
         watchDummyGames(win);
+        announceUpdate(win);
+        // did-finish-load fires again on every reload: one timer per window.
+        if (!updateTimers.has(win)) {
+            const timer = setInterval(() => announceUpdate(win), UPDATE_EVERY_MS);
+            updateTimers.add(win);
+            win.once("closed", () => clearInterval(timer));
+        }
     });
 });
 

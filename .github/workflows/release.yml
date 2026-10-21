@@ -28,6 +28,10 @@ jobs:
         with:
           node-version: 22
 
+      # The tag becomes the version the update check compares against.
+      - run: npm pkg set version="${VERSION#v}"
+        env:
+          VERSION: ${{ inputs.version }}
       - run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
       - run: npm run build:dummy
       - run: npm run check
@@ -55,6 +59,10 @@ jobs:
           cache: npm
 
       - run: npm ci
+      - run: npm pkg set "version=$($env:VERSION -replace '^v', '')"
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
       - run: npm run check
       - run: npm run build
 

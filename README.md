@@ -61,6 +61,7 @@ and open the new exe again (`1`, Install / update).
 - The panel shows the queue, progress and errors. Its buttons are **Check now**, **Pause**, **Copy report** and **Claim**, which opens the Quests page so you can claim the reward. On official Discord for Linux, game dummies start automatically when needed.
 - A red badge on the panel (even minimized) counts the rewards ready to claim; hover it for the total orbs.
 - Desktop notifications when a quest finishes, fails, or the whole queue is done. Clicking one opens the Quests page. Toggle them with **Notifications** in the panel.
+- Update check: every 6 hours it looks for a newer [release](https://github.com/devbluen/discord-auto-quest/releases). If there is one, the panel shows **Update available** with a **Download** button and a desktop notification is sent once. The exe's menu also shows it.
 - When Discord updates, the script re-applies itself to the new version if that version was already downloaded when Discord closed. If the panel disappears after an update, open the exe and install again.
 
 | Type | How |
@@ -93,7 +94,8 @@ Click **Copy report** in the panel and paste it into a new [issue](https://githu
 
 ## Security
 
-- Never reads or sends your token: requests go through Discord's own internal HTTP client, to `discord.com` only.
+- Never reads or sends your token: quest requests go through Discord's own internal HTTP client, to `discord.com` only.
+- The only other request is the update check: an anonymous GET to `api.github.com/repos/devbluen/discord-auto-quest/releases/latest`, without any Discord data.
 - No debug port, and no code downloaded from anywhere.
 - Each release ships SHA-256 checksums for the Windows installer and Linux archive; both are built by GitHub Actions from the public source.
 

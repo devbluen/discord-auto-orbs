@@ -41,6 +41,10 @@
     let autoAccept = true;
     let notifications = true;
     let finishedSinceIdle = 0;      // quests completed since the queue was last empty
+    let update = null;              // { current, latest, url } from inject.cjs when GitHub has a newer release
+
+    // Discord opens window.open() links in the default browser.
+    const openReleasePage = () => update && window.open(update.url, "_blank");
 
     function wake() {
         state.wake?.();
@@ -49,6 +53,14 @@
     let removeQuestListener, changeTimer;
     window.orbs = {
         get running() { return state.phase === "ready" && !state.paused; },
+        // Called by inject.cjs (main process) after it checks GitHub; notifies once per version.
+        updateAvailable(info) {
+            if (!info?.latest || update?.latest === info.latest) return;
+            update = info;
+            log(`Update available: v${info.latest} (installed v${info.current}). ${info.url}`);
+            notify(`discord-orbs v${info.latest} available`,
+                `You have v${info.current}. Click to open the download page.`, openReleasePage);
+        },
         check() {
             failed.clear();
             enrollFailed.clear();
@@ -83,14 +95,14 @@
 
     // Native desktop notification (Electron turns the web Notification into a Windows toast).
     // Clicking it brings Discord forward on the Quests page.
-    function notify(title, body) {
+    function notify(title, body, onClick = () => panel.openQuests()) {
         if (!notifications || typeof Notification === "undefined") return;
         try {
             const n = new Notification(title, { body });
             n.onclick = () => {
                 if (window.DiscordNative?.window?.focus) window.DiscordNative.window.focus();
                 else window.focus();
-                panel.openQuests();
+                onClick();
             };
         } catch (e) {
             warn("Notification failed:", e?.message ?? e);
@@ -625,6 +637,10 @@
 #orbs-panel.min .status,#orbs-panel.min ul,#orbs-panel.min button{display:none}
 #orbs-panel .badge{position:absolute;top:-8px;right:-8px;min-width:20px;height:20px;padding:0 6px;box-sizing:border-box;border-radius:10px;background:var(--status-danger,#f23f43);color:#fff;font-size:12px;font-weight:700;line-height:20px;text-align:center;box-shadow:0 0 0 3px var(--background-primary,#313338);display:none}
 #orbs-panel .badge.on{display:block}
+#orbs-panel .update{display:none;align-items:center;gap:8px;margin:0 12px 8px;padding:6px 8px;border-radius:4px;background:var(--background-modifier-accent,#4e5058);font-size:13px}
+#orbs-panel .update.on{display:flex}
+#orbs-panel .update span{flex:1}
+#orbs-panel.min .update{display:none}
 #orbs-panel header{display:flex;align-items:center;gap:6px;padding:8px 10px 8px 12px;cursor:pointer;user-select:none}
 #orbs-panel .t{font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #orbs-panel button{background:var(--brand-500,#5865F2);color:#fff;border:0;border-radius:4px;padding:4px 10px;font:inherit;font-size:12px;cursor:pointer}
@@ -669,7 +685,12 @@
         const list = el("ul");
         // Unread-style counter of rewards ready to claim, visible even when minimized.
         const badge = el("span", "badge");
-        panel.append(badge, header, status, options, list);
+        const updateBar = el("div", "update");
+        const updateText = el("span");
+        const updateBtn = el("button", null, "Download");
+        updateBtn.addEventListener("click", openReleasePage);
+        updateBar.append(updateText, updateBtn);
+        panel.append(badge, header, updateBar, status, options, list);
         document.body.append(panel);
 
         // null = automatic (open on the Quests page); true/false = the user chose.
@@ -866,6 +887,10 @@
             badge.textContent = ready.length > 9 ? "9+" : String(ready.length);
             badge.classList.toggle("on", ready.length > 0);
             badge.title = readyText;
+            updateBar.classList.toggle("on", !!update);
+            if (update) updateText.textContent = `Update available: v${update.latest} (you have v${update.current})`;
+            // Minimized, the pill still hints that there's an update.
+            if (update && !open) title.textContent += " · update";
             if (!open) return;
 
             if (state.phase === "loading") status.textContent = `Waiting for Discord to load… ${state.error ? `(${state.error})` : ""}`;
