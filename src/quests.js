@@ -32,7 +32,8 @@
         current: null,        // { id, progress, target }
         nextCheck: 0,
         wake: null,
-        cleanups: new Set()
+        cleanups: new Set(),
+        perf: { renders: 0, totalMs: 0, maxMs: 0 } // panel render cost, shown in the report
     };
     const done = new Set();
     const failed = new Map();       // questId -> reason
@@ -181,7 +182,9 @@
         (typeof IS_DISCORD_DESKTOP !== "undefined" && IS_DISCORD_DESKTOP);
     let mods, attempt = 0;
     for (; !state.destroyed ;) {
-        mods = resolveModules(attempt >= 20);
+        // The deep scan stringifies every webpack factory (tens of thousands): expensive enough to
+        // stutter Discord, so after the cheap attempts it runs only every 5th try.
+        mods = resolveModules(attempt >= 20 && attempt % 5 === 0);
         const missing = mods
             ? Object.entries(mods).filter(([k, v]) =>
                 k !== "RunningGameStore" && (!v || (Array.isArray(v) && !v.length))).map(([k]) => k)
@@ -221,6 +224,11 @@
         store: QuestsStore.getName?.(),
         questsType: Object.prototype.toString.call(QuestsStore.quests),
         autoGame: isLinux && canRunGame,
+        panelRender: {
+            renders: state.perf.renders,
+            avgMs: +(state.perf.totalMs / Math.max(1, state.perf.renders)).toFixed(2),
+            maxMs: +state.perf.maxMs.toFixed(2)
+        },
         detectedGames: (RunningGameStore?.getRunningGames?.() ?? []).map(game => ({
             id: game.id, name: game.name, exeName: game.exeName
         })),
@@ -506,7 +514,9 @@
         const exeName = executable?.name?.replace(">", "") ?? `${app.name}.exe`;
         const exePath = `c:/program files/${app.name.toLowerCase()}/${exeName}`;
 
-        const pid = Math.floor(Math.random() * 30000) + 1000;
+        // Windows PIDs are always multiples of 4, so an odd one can never belong to a real
+        // process: Discord's native side won't end up probing some unrelated running program.
+        const pid = Math.floor(Math.random() * 15000) * 4 + 1001;
         const fakeGame = {
             cmdLine: `C:\\Program Files\\${app.name}\\${exeName}`,
             exeName,
@@ -858,7 +868,21 @@
             return { rank, li };
         }
 
+        // Nothing to draw while Discord is minimized or in the tray; render time is tracked
+        // so "Copy report" shows what the panel actually costs.
+        let lastSignature = null;
+        const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
         function render() {
+            if (document.hidden) return;
+            const started = now();
+            draw();
+            const ms = now() - started;
+            state.perf.renders++;
+            state.perf.totalMs += ms;
+            state.perf.maxMs = Math.max(state.perf.maxMs, ms);
+        }
+
+        function draw() {
             if (location.pathname !== lastPath) {
                 lastPath = location.pathname;
                 manualOpen = null;
@@ -900,14 +924,23 @@
             else status.textContent = `Nothing queued. Next check in ${fmt((state.nextCheck - Date.now()) / 1000)}.`;
             if (readyText) status.textContent += ` ${readyText}.`;
 
-            if (state.phase !== "ready") return list.replaceChildren();
+            if (state.phase !== "ready") {
+                lastSignature = null;
+                return list.replaceChildren();
+            }
             // Rows follow the same priority the runner uses, so the queue order is what you see.
             const quests = allQuests().sort(byPriority);
             const queue = new Map(pendingQuests().map((q, i) => [q.id, i + 1]));
             const rows = quests.map(q => questRow(q, queue.get(q.id))).sort((a, b) => a.rank - b.rank);
             if (!rows.length) {
+                lastSignature = null;
                 return list.replaceChildren(el("li", "s", "No quests loaded yet. Open Discord's Quests page."));
             }
+            // Swapping the list every second forces Discord to re-layout and repaint; only touch
+            // the DOM when what's shown actually changed.
+            const signature = rows.map(r => r.li.textContent + (r.li.querySelector("i")?.style.width ?? "")).join("\n");
+            if (signature === lastSignature) return;
+            lastSignature = signature;
             list.replaceChildren(...rows.map(r => r.li));
         }
 
