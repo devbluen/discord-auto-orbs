@@ -6,8 +6,12 @@ const path = require("node:path");
 const { EventEmitter } = require("node:events");
 const { executablePath, gameDirectory, createRunner } = require("../src/dummy-game.cjs");
 
-test("bundled runner is a small Windows executable", () => {
-    const source = path.join(__dirname, "..", "src", "dummy-game-win.exe");
+const builtDummy = path.join(__dirname, "..", "src", "dummy-game-win.exe");
+
+// The binary isn't committed; it exists only after `npm run build:dummy` (Linux + MinGW, or CI).
+test("bundled runner is a small Windows executable",
+    { skip: !fs.existsSync(builtDummy) && "dummy-game-win.exe not built" }, () => {
+    const source = builtDummy;
     assert.ok(fs.statSync(source).size < 32 * 1024);
     assert.equal(fs.readFileSync(source).subarray(0, 2).toString(), "MZ");
 });
@@ -39,7 +43,7 @@ test("runner copies, starts and reports an exiting Wine game", t => {
     assert.match(runner.ensure(plan), /Started Wine dummy for Example Game/);
     assert.equal(starts.length, 1);
     assert.equal(starts[0].command, "wine");
-    assert.match(starts[0].args[0], /games\/2\/Example Game\/Example Game\/Game\.exe$/);
+    assert.equal(starts[0].args[0], path.join(root, "games", "2", "Example Game", "Example Game", "Game.exe"));
     assert.equal(starts[0].opts.env.WINEPREFIX, path.join(root, "games", ".wineprefix"));
     assert.equal(fs.readFileSync(starts[0].args[0], "utf8"), "dummy");
     runner.ensure(plan);

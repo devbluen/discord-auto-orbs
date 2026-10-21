@@ -12,8 +12,10 @@ try {
     if (s.isSea()) sea = s;
 } catch { }
 
-const PAYLOAD = ["quests.js", "inject.cjs", "patcher.cjs", "dummy-game.cjs"];
-const BINARY_PAYLOAD = ["dummy-game-win.exe"];
+// The Wine dummy is Linux-only; the build leaves it out of the Windows exe (see scripts/build.js).
+const LINUX = process.platform === "linux";
+const PAYLOAD = ["quests.js", "inject.cjs", "patcher.cjs", ...(LINUX ? ["dummy-game.cjs"] : [])];
+const BINARY_PAYLOAD = LINUX ? ["dummy-game-win.exe"] : [];
 const INSTALL_DIR = process.platform === "linux"
     ? path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share"), "discord-orbs")
     : path.join(process.env.LOCALAPPDATA ?? os.homedir(), "discord-orbs");
@@ -36,7 +38,9 @@ function payloadDir() {
     if (!sea) return __dirname;
     fs.mkdirSync(INSTALL_DIR, { recursive: true });
     for (const f of PAYLOAD) fs.writeFileSync(path.join(INSTALL_DIR, f), sea.getAsset(f, "utf8"));
-    for (const f of BINARY_PAYLOAD) fs.writeFileSync(path.join(INSTALL_DIR, f), Buffer.from(sea.getAsset(f)));
+    for (const f of BINARY_PAYLOAD) {
+        try { fs.writeFileSync(path.join(INSTALL_DIR, f), Buffer.from(sea.getAsset(f))); } catch { }
+    }
     return INSTALL_DIR;
 }
 

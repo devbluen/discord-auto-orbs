@@ -17,7 +17,9 @@ permissions:
   contents: write
 
 jobs:
-  dummy:
+  # The Wine dummy is Linux-only and never committed: it is compiled here from
+  # src/dummy-game-win.c and goes only into the Linux archive.
+  linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,24 +40,14 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: dummy-game-win
-          path: src/dummy-game-win.exe
-
-      - uses: actions/upload-artifact@v4
-        with:
           name: linux-release
           path: dist/discord-orbs-linux.tar.gz
 
   release:
-    needs: dummy
+    needs: linux
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: dummy-game-win
-          path: src
 
       - uses: actions/setup-node@v4
         with:

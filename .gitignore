@@ -1,2 +1,4 @@
 node_modules/
 dist/
+# Built from src/dummy-game-win.c (npm run build:dummy, or by the release workflow)
+src/dummy-game-win.exe
