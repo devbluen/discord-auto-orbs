@@ -6,7 +6,7 @@ Completes Discord quests from inside the official Discord desktop app on Windows
 
 ## Install (easiest)
 
-1. Go to [Releases](https://github.com/devbluen/discord-auto-quest/releases/latest) and download `discord-orbs.exe`.
+1. Go to [Releases](https://github.com/devbluen/discord-auto-quest/releases/latest) and download `discord-orbs-<version>.exe` (e.g. `discord-orbs-1.2.0.exe`).
 2. Open it. If Windows shows "Windows protected your PC", click **More info** → **Run anyway** (the exe is unsigned).
 3. Type `1` (Install / update) and press Enter, then `Y` to restart Discord.
 4. In Discord, open the **Quests** page. A panel appears in the bottom-right corner and starts working.
@@ -15,7 +15,7 @@ To remove it: open the exe again and choose `2` (Uninstall).
 
 ## Linux
 
-Use the official Discord desktop app. Install Node.js 22 or newer. Download `discord-orbs-linux.tar.gz` from [Releases](https://github.com/devbluen/discord-auto-quest/releases/latest) and extract it, or clone this repository. Then run from the extracted `discord-auto-quest` folder:
+Use the official Discord desktop app. Install Node.js 22 or newer. Download `discord-orbs-linux-<version>.tar.gz` from [Releases](https://github.com/devbluen/discord-auto-quest/releases/latest) and extract it, or clone this repository. Then run from the extracted `discord-auto-quest-<version>` folder (or the cloned `discord-auto-quest`):
 
 ```sh
 node src/cli.cjs status

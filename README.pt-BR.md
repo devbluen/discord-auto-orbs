@@ -6,7 +6,7 @@ Completa as missões (quests) no aplicativo oficial do Discord para Windows e Li
 
 ## Instalar (jeito mais fácil)
 
-1. Entre em [Releases](https://github.com/devbluen/discord-auto-quest/releases/latest) e baixe o `discord-orbs.exe`.
+1. Entre em [Releases](https://github.com/devbluen/discord-auto-quest/releases/latest) e baixe o `discord-orbs-<versão>.exe` (ex.: `discord-orbs-1.2.0.exe`).
 2. Abra o arquivo. Se o Windows mostrar "O Windows protegeu o computador", clique em **Mais informações** → **Executar assim mesmo** (o exe não é assinado).
 3. Digite `1` (Install / update) e aperte Enter, depois `Y` para reiniciar o Discord.
 4. No Discord, abra a página de **Missões**. Um painel aparece no canto inferior direito e começa a trabalhar.
@@ -15,7 +15,7 @@ Para remover: abra o exe de novo e escolha `2` (Uninstall).
 
 ## Linux
 
-Use o Discord oficial para desktop. Instale Node.js 22 ou mais novo, baixe `discord-orbs-linux.tar.gz` em [Releases](https://github.com/devbluen/discord-auto-quest/releases/latest) e extraia o arquivo. Dentro da pasta `discord-auto-quest`, rode `node src/cli.cjs install`. Feche o Discord por completo e abra de novo. Para missões de jogos, instale Wine; o pacote inicia automaticamente um exe pequeno que roda fora da tela (`dummy-game-win.exe`, compilado pelo workflow a partir de `src/dummy-game-win.c`; ele só existe no pacote Linux, não no exe de Windows). Se usar um `git clone` em vez do pacote, instale o MinGW (`gcc-mingw-w64-x86-64`) e rode `npm run build:dummy`. Para remover o patch, rode `node src/cli.cjs uninstall` e reinicie o Discord.
+Use o Discord oficial para desktop. Instale Node.js 22 ou mais novo, baixe `discord-orbs-linux-<versão>.tar.gz` em [Releases](https://github.com/devbluen/discord-auto-quest/releases/latest) e extraia o arquivo. Dentro da pasta extraída `discord-auto-quest-<versão>`, rode `node src/cli.cjs install`. Feche o Discord por completo e abra de novo. Para missões de jogos, instale Wine; o pacote inicia automaticamente um exe pequeno que roda fora da tela (`dummy-game-win.exe`, compilado pelo workflow a partir de `src/dummy-game-win.c`; ele só existe no pacote Linux, não no exe de Windows). Se usar um `git clone` em vez do pacote, instale o MinGW (`gcc-mingw-w64-x86-64`) e rode `npm run build:dummy`. Para remover o patch, rode `node src/cli.cjs uninstall` e reinicie o Discord.
 
 ## Gerar o exe você mesmo
 
@@ -86,6 +86,6 @@ Clique em **Copy report** no painel e cole numa nova [issue](https://github.com/
 - Não lê nem envia seu token: as requisições das missões passam pelo cliente HTTP interno do Discord, só para `discord.com`.
 - A única outra requisição é a verificação de atualização: um GET anônimo para `api.github.com/repos/devbluen/discord-auto-quest/releases/latest`, sem nenhum dado do Discord.
 - Sem porta de debug e sem baixar código de fora.
-- Cada release vem com um checksum `discord-orbs.exe.sha256`; o exe é gerado pelo GitHub Actions a partir do código público.
+- Cada release vem com um checksum `.sha256` para cada download; o exe é gerado pelo GitHub Actions a partir do código público.
 
 **Isso viola os Termos do Discord.** A conta pode ter as missões suspensas ou ser banida. Use por sua conta e risco.
