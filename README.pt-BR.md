@@ -2,7 +2,7 @@
 
 [English](README.md) · **Português**
 
-Completa as missões (quests) do Discord dentro do seu próprio app. Não precisa de Canary, Vencord nem outro cliente.
+Completa as missões (quests) no aplicativo oficial do Discord para Windows e Linux.
 
 ## Instalar (jeito mais fácil)
 
@@ -12,6 +12,10 @@ Completa as missões (quests) do Discord dentro do seu próprio app. Não precis
 4. No Discord, abra a página de **Missões**. Um painel aparece no canto inferior direito e começa a trabalhar.
 
 Para remover: abra o exe de novo e escolha `2` (Uninstall).
+
+## Linux
+
+Use o Discord oficial para desktop. Instale Node.js 22 ou mais novo, baixe `discord-orbs-linux.tar.gz` em [Releases](https://github.com/devbluen/discord-auto-quest/releases/latest) e extraia o arquivo. Dentro da pasta `discord-auto-quest`, rode `node src/cli.cjs install`. Feche o Discord por completo e abra de novo. Para missões de jogos, instale Wine e ative **Auto game** no painel; o pacote inclui um exe pequeno que roda fora da tela. Para remover o patch, rode `node src/cli.cjs uninstall` e reinicie o Discord.
 
 ## Gerar o exe você mesmo
 
@@ -51,7 +55,7 @@ e abra o exe novo (`1`, Install / update).
 | Tipo | Como |
 | --- | --- |
 | `WATCH_VIDEO` / `WATCH_VIDEO_ON_MOBILE` | envia o progresso do vídeo respeitando o limite de tempo do servidor |
-| `PLAY_ON_DESKTOP` | finge o processo do jogo; o próprio Discord manda os heartbeats |
+| `PLAY_ON_DESKTOP` | no Discord oficial para Windows, finge o processo do jogo; no Discord oficial para Linux, acompanha um jogo detectado pelo Discord |
 | `PLAY_ACTIVITY` | manda um heartbeat a cada 20 s usando uma DM ou canal de voz |
 
 Não suportados: `STREAM_ON_DESKTOP` (exige uma live real com outra pessoa na call) e missões de conquista.
