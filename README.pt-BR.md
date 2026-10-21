@@ -15,7 +15,7 @@ Para remover: abra o exe de novo e escolha `2` (Uninstall).
 
 ## Linux
 
-Use o Discord oficial para desktop. Instale Node.js 22 ou mais novo, baixe `discord-orbs-linux.tar.gz` em [Releases](https://github.com/devbluen/discord-auto-quest/releases/latest) e extraia o arquivo. Dentro da pasta `discord-auto-quest`, rode `node src/cli.cjs install`. Feche o Discord por completo e abra de novo. Para missões de jogos, instale Wine e ative **Auto game** no painel; o pacote inclui um exe pequeno que roda fora da tela. Para remover o patch, rode `node src/cli.cjs uninstall` e reinicie o Discord.
+Use o Discord oficial para desktop. Instale Node.js 22 ou mais novo, baixe `discord-orbs-linux.tar.gz` em [Releases](https://github.com/devbluen/discord-auto-quest/releases/latest) e extraia o arquivo. Dentro da pasta `discord-auto-quest`, rode `node src/cli.cjs install`. Feche o Discord por completo e abra de novo. Para missões de jogos, instale Wine; o pacote inicia automaticamente um exe pequeno que roda fora da tela. Para remover o patch, rode `node src/cli.cjs uninstall` e reinicie o Discord.
 
 ## Gerar o exe você mesmo
 

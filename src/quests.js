@@ -39,8 +39,6 @@
     const enrollFailed = new Map(); // questId -> reason
     const overrides = new Map();    // questId -> userStatus returned by enroll (the store can lag behind)
     let autoAccept = true;
-    let autoDummy = false;
-    try { autoDummy = localStorage.getItem("orbs.autoDummy") === "true"; } catch { }
     let notifications = true;
     let finishedSinceIdle = 0;      // quests completed since the queue was last empty
 
@@ -210,7 +208,7 @@
     window.orbs.debug = () => JSON.stringify({
         store: QuestsStore.getName?.(),
         questsType: Object.prototype.toString.call(QuestsStore.quests),
-        autoGame: autoDummy,
+        autoGame: isLinux && canRunGame,
         detectedGames: (RunningGameStore?.getRunningGames?.() ?? []).map(game => ({
             id: game.id, name: game.name, exeName: game.exeName
         })),
@@ -248,7 +246,7 @@
     const gameAppCache = new Map();
     // The Linux main process polls this to launch one Wine dummy for the next game quest.
     window.orbs.dummyPlan = async () => {
-        if (!isLinux || !canRunGame || !autoDummy || state.paused || state.destroyed ||
+        if (!isLinux || !canRunGame || state.paused || state.destroyed ||
             [...failed.values()].some(reason => /401|unauthori[sz]ed/i.test(reason))) return null;
         const games = allQuests().filter(q =>
             pickTask(q) === "PLAY_ON_DESKTOP" && !statusOf(q).completedAt &&
@@ -265,7 +263,7 @@
                     return null;
                 }));
         const app = await gameAppCache.get(appId);
-        if (!autoDummy || state.paused || state.destroyed) return null;
+        if (state.paused || state.destroyed) return null;
         const exeName = app?.executables?.find(x => x.os === "win32")?.name;
         if (!exeName) return null;
         return { questId: q.id, appId, exeName, name: app.name, running: !!detectedGameOf(q) };
@@ -658,10 +656,6 @@
         const pauseBtn = el("button", "sec", "Pause");
         const acceptBtn = el("button", "sec");
         acceptBtn.title = "Automatically accept the quests the script can complete";
-        const dummyBtn = /Linux/i.test(navigator.userAgent) &&
-            typeof window.DiscordNative !== "undefined"
-            ? el("button", "sec") : null;
-        if (dummyBtn) dummyBtn.title = "Launch Wine dummy processes for game quests, one at a time";
         header.append(title, checkBtn, pauseBtn);
         const status = el("div", "status");
         const copyBtn = el("button", "sec", "Copy report");
@@ -671,7 +665,7 @@
         options.style.display = "flex";
         options.style.flexWrap = "wrap";
         options.style.gap = "6px";
-        options.append(acceptBtn, ...(dummyBtn ? [dummyBtn] : []), notifyBtn, copyBtn);
+        options.append(acceptBtn, notifyBtn, copyBtn);
         const list = el("ul");
         // Unread-style counter of rewards ready to claim, visible even when minimized.
         const badge = el("span", "badge");
@@ -778,12 +772,6 @@
             if (autoAccept) wake();
             render();
         });
-        dummyBtn?.addEventListener("click", () => {
-            autoDummy = !autoDummy;
-            try { localStorage.setItem("orbs.autoDummy", String(autoDummy)); } catch { }
-            if (autoDummy) wake();
-            render();
-        });
         pauseBtn.addEventListener("click", () => {
             state.paused ? window.orbs.start() : window.orbs.stop();
             render();
@@ -815,9 +803,7 @@
             } else if (us.completedAt || done.has(q.id)) {
                 rank = 5; text = `${reward}completed · reward waiting`; cls = "ok";
             } else if (isLinux && task === "PLAY_ON_DESKTOP" && !detectedGameOf(q)) {
-                rank = 3; text = autoDummy
-                    ? "launching Wine dummy; waiting for Discord to detect it"
-                    : "start the game under Wine/Proton; waiting for Discord to detect it";
+                rank = 3; text = "launching Wine dummy; waiting for Discord to detect it";
             } else if (!us.enrolledAt && enrollFailed.has(q.id)) {
                 rank = 2; text = `failed to accept: ${enrollFailed.get(q.id)}`; cls = "err";
             } else if (!us.enrolledAt && task && autoAccept) {
@@ -869,7 +855,6 @@
             title.textContent = `orbs · ${summary}`;
             pauseBtn.textContent = state.paused ? "Resume" : "Pause";
             acceptBtn.textContent = `Auto-accept: ${autoAccept ? "on" : "off"}`;
-            if (dummyBtn) dummyBtn.textContent = `Auto game: ${autoDummy ? "on" : "off"}`;
             notifyBtn.textContent = `Notifications: ${notifications ? "on" : "off"}`;
             checkBtn.disabled = pauseBtn.disabled = acceptBtn.disabled = state.phase !== "ready";
 
