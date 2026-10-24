@@ -49,6 +49,8 @@ e abra o exe novo (`1`, Install / update).
 - Ordem: primeiro as que dão mais orbs por minuto restante, depois as sem orbs, das mais curtas para as mais longas.
 - O painel mostra a fila, o progresso e os erros. Os botões são **Check now** (verificar agora), **Pause** (pausar), **Copy report** (copiar relatório) e **Claim** (abre a página de missões para resgatar a recompensa).
 - Uma bolinha vermelha no painel (mesmo minimizado) conta as recompensas prontas para resgatar; passe o mouse para ver o total de orbs.
+- Arraste o orb (ou o painel aberto pelo cabeçalho) para qualquer lugar; clique duas vezes no cabeçalho para voltar ao canto. A posição, o idioma e as chaves ficam salvos.
+- Português e inglês: segue o idioma do Discord, ou troque pelo botão **EN/PT** no painel.
 - Notificações na área de trabalho quando uma missão termina, falha ou quando a fila inteira acaba. Clicar numa delas abre a página de missões. Ligue/desligue em **Notifications** no painel.
 - Verificação de atualização: a cada 6 horas procura uma [release](https://github.com/devbluen/discord-auto-quest/releases) mais nova. Se houver, o painel mostra **Update available** com um botão **Download** e manda uma notificação na área de trabalho (uma vez por versão). O menu do exe também avisa.
 - Quando o Discord atualiza, o script se reaplica sozinho na versão nova se ela já estiver baixada quando o Discord fechar. Se o painel sumir depois de uma atualização, abra o exe e instale de novo.

@@ -60,6 +60,8 @@ and open the new exe again (`1`, Install / update).
 - Order: quests that give the most orbs per remaining minute first, then quests without orbs, shortest first.
 - The panel shows the queue, progress and errors. Its buttons are **Check now**, **Pause**, **Copy report** and **Claim**, which opens the Quests page so you can claim the reward. On official Discord for Linux, game dummies start automatically when needed.
 - A red badge on the panel (even minimized) counts the rewards ready to claim; hover it for the total orbs.
+- Drag the orb (or the open panel by its header) anywhere; double-click the header to put it back in the corner. The position, language and toggles are remembered.
+- English and Portuguese: follows Discord's language, or switch with the **EN/PT** button in the panel.
 - Desktop notifications when a quest finishes, fails, or the whole queue is done. Clicking one opens the Quests page. Toggle them with **Notifications** in the panel.
 - Update check: every 6 hours it looks for a newer [release](https://github.com/devbluen/discord-auto-quest/releases). If there is one, the panel shows **Update available** with a **Download** button and a desktop notification is sent once. The exe's menu also shows it.
 - When Discord updates, the script re-applies itself to the new version if that version was already downloaded when Discord closed. If the panel disappears after an update, open the exe and install again.

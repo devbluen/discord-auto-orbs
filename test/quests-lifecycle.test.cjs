@@ -11,23 +11,27 @@ test("renderer script can stop while modules are loading", async () => {
     const removed = [];
     const element = tag => ({
         tag,
-        classList: { toggle() {} },
+        classList: { toggle() {}, add() {}, remove() {} },
         style: {},
         dataset: {},
         append() {},
+        setAttribute() {},
         addEventListener() {},
         replaceChildren() {},
         remove() { removed.push(tag); }
     });
-    const window = {};
+    const window = { addEventListener() {}, removeEventListener() {} };
     const context = {
         window,
         document: {
             createElement: element,
+            createElementNS: (_, tag) => element(tag),
             head: { append() {} },
             body: { append() {} }
         },
         location: { pathname: "/channels/@me" },
+        innerWidth: 1280,
+        innerHeight: 720,
         navigator: { userAgent: "Linux" },
         console,
         setInterval: () => 1,
