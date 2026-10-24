@@ -3,6 +3,7 @@
 **English** · [Português](README.pt-BR.md)
 
 Completes Discord quests from inside the official Discord desktop app on Windows and Linux.
+<img width="375" height="615" alt="image" src="https://github.com/user-attachments/assets/a1798c63-de7f-4b16-97e4-2aef5bd7a4d1" />
 
 ## Install (easiest)
 
@@ -102,5 +103,3 @@ Click **Copy report** in the panel and paste it into a new [issue](https://githu
 - Each release ships SHA-256 checksums for the Windows installer and Linux archive; both are built by GitHub Actions from the public source.
 
 **This violates Discord's Terms of Service.** Your account may have quests suspended or be banned. Use at your own risk.
-
-<img width="525" height="908" alt="image" src="https://github.com/user-attachments/assets/542b1cfe-5630-44a7-a100-75c27c5903f6" />
