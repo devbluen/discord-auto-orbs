@@ -4,6 +4,8 @@
 
 Completa as missões (quests) no aplicativo oficial do Discord para Windows e Linux.
 
+<img width="380" height="622" alt="Captura de tela 2026-10-24 012409" src="https://github.com/user-attachments/assets/c0acd6c7-c931-4487-a944-cefabc5b4efa" />
+
 ## Instalar (jeito mais fácil)
 
 1. Entre em [Releases](https://github.com/devbluen/discord-auto-quest/releases/latest) e baixe o `discord-orbs-<versão>.exe` (ex.: `discord-orbs-1.2.0.exe`).
