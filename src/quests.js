@@ -86,12 +86,25 @@
             left: "{d} left", update: "Update {v}", youHave: "You have {v}", download: "Download",
             ready: "Ready to claim", next: "Up next", attention: "Needs attention", other: "Other",
             claim: "Claim", retry: "Retry",
-            video: "Video", game: "Game", activity: "Activity", quest: "Quest",
+            video: "Video", game: "Game", activity: "Activity", stream: "Stream", quest: "Quest",
+            streamNeeded: "Go Live (any window) with someone else in the call",
+            streamAlone: "You're live: someone else needs to join the call",
+            play: "Play", playUnavailable: "Unavailable in this client", playing: "Playing {name}",
+            playingFor: "for {d}", nextIn: "next game in {d}", notPlaying: "Not playing",
+            playPick: "Add games below to start", start: "Start", stop: "Stop", switchEvery: "Switch every",
+            searchGames: "Search Discord's games…", loadingGames: "Loading Discord's game list…", noResults: "No games found",
+            remove: "Remove", playCount: n => `${n} game${n === 1 ? "" : "s"}`,
+            playHint: "Discord counts real time while it's open. One game adds hours played; several (rotated) add games played. The profile's game badges come from these.",
             claimed: "Reward claimed", claimedChip: "Claimed", completed: "Completed",
             wine: "Waiting for Discord to detect the Wine game", couldntAccept: "Couldn't accept: {e}",
             accepting: "{d} · accepting…", notAccepted: "Not accepted · turn on Auto-accept",
             gameUnavailable: "Game detection unavailable in this client", unsupported: "Unsupported quest type",
             reopen: "Reopen the Quests page so Discord starts the game",
+            badges: "Badges", badgesLoading: "Loading your profile…", badgesError: "Couldn't read your profile: {e}",
+            badgeOwned: "You have it", badge_quest: "Quest", badgeQuestHow: "Complete any quest · the queue does it",
+            badge_hypesquad: "HypeSquad", badgeHypeHow: "Free · pick a house", joining: "Joining…",
+            badge_orbs: "Orbs", badgeOrbsHow: "Bought with orbs in the Shop", shop: "Shop",
+            badge_activeDev: "Active Developer", badgeDevHow: "Needs an active bot", guide: "Guide",
             tipLoading: "loading", tipError: "error", tipPaused: "paused", tipRunning: "running {p}%", tipIdle: "idle",
             tipReady: n => `${n} reward${n === 1 ? "" : "s"} ready`, tipUpdate: "update {v} available",
             rewardsReady: n => `${n} reward${n === 1 ? "" : "s"} ready`,
@@ -116,12 +129,25 @@
             left: "faltam {d}", update: "Atualização {v}", youHave: "Você tem a {v}", download: "Baixar",
             ready: "Prontas para resgatar", next: "Próximas", attention: "Precisam de atenção", other: "Outras",
             claim: "Resgatar", retry: "Tentar de novo",
-            video: "Vídeo", game: "Jogo", activity: "Atividade", quest: "Missão",
+            video: "Vídeo", game: "Jogo", activity: "Atividade", stream: "Transmissão", quest: "Missão",
+            streamNeeded: "Transmita (qualquer janela) com outra pessoa na call",
+            streamAlone: "Você está ao vivo: outra pessoa precisa entrar na call",
+            play: "Jogar", playUnavailable: "Indisponível neste cliente", playing: "Jogando {name}",
+            playingFor: "há {d}", nextIn: "próximo jogo em {d}", notPlaying: "Parado",
+            playPick: "Adicione jogos abaixo para começar", start: "Iniciar", stop: "Parar", switchEvery: "Trocar a cada",
+            searchGames: "Buscar nos jogos do Discord…", loadingGames: "Carregando a lista de jogos do Discord…", noResults: "Nenhum jogo encontrado",
+            remove: "Remover", playCount: n => `${n} jogo${n === 1 ? "" : "s"}`,
+            playHint: "O Discord conta tempo real enquanto está aberto. Um jogo soma horas jogadas; vários (alternando) somam jogos jogados. As insígnias de jogo do perfil vêm disso.",
             claimed: "Recompensa resgatada", claimedChip: "Resgatada", completed: "Concluída",
             wine: "Esperando o Discord detectar o jogo no Wine", couldntAccept: "Não foi possível aceitar: {e}",
             accepting: "{d} · aceitando…", notAccepted: "Não aceita · ligue o Auto-aceitar",
             gameUnavailable: "Detecção de jogo indisponível neste cliente", unsupported: "Tipo de missão não suportado",
             reopen: "Reabra a página de Missões para o Discord iniciar o jogo",
+            badges: "Insígnias", badgesLoading: "Carregando seu perfil…", badgesError: "Não foi possível ler seu perfil: {e}",
+            badgeOwned: "Você já tem", badge_quest: "Missão", badgeQuestHow: "Complete qualquer missão · a fila faz isso",
+            badge_hypesquad: "HypeSquad", badgeHypeHow: "Grátis · escolha uma casa", joining: "Entrando…",
+            badge_orbs: "Orbs", badgeOrbsHow: "Comprada com orbs na Loja", shop: "Loja",
+            badge_activeDev: "Desenvolvedor Ativo", badgeDevHow: "Precisa de um bot ativo", guide: "Guia",
             tipLoading: "carregando", tipError: "erro", tipPaused: "pausado", tipRunning: "executando {p}%", tipIdle: "ocioso",
             tipReady: n => `${n} recompensa${n === 1 ? "" : "s"} pronta${n === 1 ? "" : "s"}`, tipUpdate: "atualização {v} disponível",
             rewardsReady: n => `${n} recompensa${n === 1 ? "" : "s"} pronta${n === 1 ? "" : "s"}`,
@@ -141,6 +167,9 @@
     }
     let finishedSinceIdle = 0;      // quests completed since the queue was last empty
     let update = null;              // { current, latest, url } from inject.cjs when GitHub has a newer release
+    let me = null;                  // the /users/@me answer from the API probe
+    const badges = { list: null, error: null, busy: false }; // profile badges, for the Badges section
+    let playCleanup = null;         // removes the Play session's fake game (set once it exists)
 
     // Discord opens window.open() links in the default browser.
     const openReleasePage = () => update && window.open(update.url, "_blank");
@@ -178,6 +207,7 @@
             state.destroyed = true;
             clearTimeout(changeTimer);
             removeQuestListener?.();
+            playCleanup?.();
             panel.destroy();
             wake();
             delete window.orbs;
@@ -304,7 +334,7 @@
         if (state.destroyed) return;
         try {
             const res = await candidate.get({ url: "/users/@me" });
-            if (res?.body?.id) { api = candidate; break; }
+            if (res?.body?.id) { api = candidate; me = res.body; break; }
         } catch { }
     }
     if (state.destroyed) return;
@@ -316,11 +346,44 @@
     state.phase = "ready";
     state.error = null;
 
+    // Badges an account can earn on its own: Quest (any completed quest), HypeSquad (a free
+    // house, the same call Settings → HypeSquad makes), Orbs (bought in the Shop) and Active
+    // Developer (needs a bot app). Read from the profile, i.e. what other people see.
+    async function loadBadges() {
+        try {
+            const res = await api.get({ url: `/users/${me.id}/profile?with_mutual_guilds=false&with_mutual_friends=false` });
+            badges.list = res.body?.badges ?? [];
+            badges.error = null;
+        } catch (e) {
+            badges.error = errMsg(e);
+        }
+    }
+    // house: 1 Bravery, 2 Brilliance, 3 Balance.
+    async function joinHypeSquad(house) {
+        if (badges.busy) return;
+        badges.busy = true;
+        try {
+            await api.post({ url: "/hypesquad/online", body: { house_id: house } });
+            log(`Joined HypeSquad house ${house}.`);
+            // The profile takes a moment to show the new badge.
+            await sleep(1500);
+            await loadBadges();
+        } catch (e) {
+            badges.error = errMsg(e);
+            warn("HypeSquad join failed:", errMsg(e));
+        } finally {
+            badges.busy = false;
+        }
+    }
+    window.orbs.badges = () => badges.list;
+    loadBadges();
+
     // Diagnostics: `copy(orbs.debug())` in the console copies the quests' shape (no token).
     window.orbs.debug = () => JSON.stringify({
         store: QuestsStore.getName?.(),
         questsType: Object.prototype.toString.call(QuestsStore.quests),
         autoGame: isLinux && canRunGame,
+        stream: canStream ? streamState() : "unsupported (ApplicationStreamingStore not found)",
         panelRender: {
             renders: state.perf.renders,
             avgMs: +(state.perf.totalMs / Math.max(1, state.perf.renders)).toFixed(2),
@@ -349,9 +412,28 @@
     // The official Linux client uses a game process detected by Discord.
     const isLinux = /Linux/i.test(navigator.userAgent);
     const canRunGame = isDesktop && !!RunningGameStore;
-    const SUPPORTED = canRunGame
-        ? ["WATCH_VIDEO", "WATCH_VIDEO_ON_MOBILE", "PLAY_ON_DESKTOP", "PLAY_ACTIVITY"]
-        : ["WATCH_VIDEO", "WATCH_VIDEO_ON_MOBILE", "PLAY_ACTIVITY"];
+
+    // Stream quests are assisted: Discord only counts them while you really Go Live with
+    // someone else in the voice channel, which a script can't fake. Once that's true, the
+    // script only makes Discord read the stream as the quest's game. Optional stores: without
+    // them stream quests just stay unsupported.
+    const streamReq = getRequire();
+    const StreamStore = streamReq && store(streamReq, /^ApplicationStreamingStore$/, ["getStreamerActiveStreamMetadata", "getCurrentUserActiveStream"], false);
+    const VoiceStateStore = streamReq && store(streamReq, /^VoiceStateStore$/, ["getVoiceStatesForChannel"], false);
+    const canStream = isDesktop && !!StreamStore;
+    // "none" (not live), "alone" (live, nobody else in the call) or "ready".
+    function streamState() {
+        const stream = StreamStore?.getCurrentUserActiveStream?.();
+        if (!stream) return "none";
+        const states = VoiceStateStore?.getVoiceStatesForChannel?.(stream.channelId);
+        const people = states instanceof Map ? states.size : Object.keys(states ?? {}).length;
+        return VoiceStateStore && people < 2 ? "alone" : "ready";
+    }
+
+    // Order matters: a quest offering several tasks runs the first one listed here, and
+    // streaming (which needs you) comes last.
+    const SUPPORTED = ["WATCH_VIDEO", "WATCH_VIDEO_ON_MOBILE",
+        ...(canRunGame ? ["PLAY_ON_DESKTOP"] : []), "PLAY_ACTIVITY", ...(canStream ? ["STREAM_ON_DESKTOP"] : [])];
 
     const taskConfigOf = q => q.config.taskConfig ?? q.config.taskConfigV2;
     const gameAppIdOf = q => taskConfigOf(q)?.tasks?.PLAY_ON_DESKTOP?.applications?.[0]?.id ?? q.config.application?.id;
@@ -405,7 +487,7 @@
     };
     // For game quests Discord itself sends the heartbeat, and only for quests the store already
     // knows are enrolled; enrolled only by the script, they wait for the store to catch up.
-    const waitingStore = q => pickTask(q) === "PLAY_ON_DESKTOP" && !storeStatus(q)?.enrolledAt;
+    const waitingStore = q => ["PLAY_ON_DESKTOP", "STREAM_ON_DESKTOP"].includes(pickTask(q)) && !storeStatus(q)?.enrolledAt;
     const progressOf = (q, task) => statusOf(q).progress?.[task]?.value ?? 0;
     const nameOf = q => q.config.messages?.questName ?? q.id;
     const orbsOf = q => (q.config.rewardsConfig?.rewards ?? [])
@@ -454,6 +536,9 @@
         !failed.has(q.id) &&
         pickTask(q) &&
         (pickTask(q) !== "PLAY_ON_DESKTOP" || !isLinux || detectedGameOf(q)) &&
+        // Stream quests only join the queue while you're live with company; until then they
+        // wait in "Needs attention" without holding up the rest.
+        (pickTask(q) !== "STREAM_ON_DESKTOP" || streamState() === "ready") &&
         !waitingStore(q)
     ).sort(byPriority);
 
@@ -508,10 +593,176 @@
     };
     QuestsStore.addChangeListener?.(onQuestChange);
     if (isLinux && canRunGame) Dispatcher.subscribe?.("RUNNING_GAMES_CHANGE", onQuestChange);
+    // Going live (or someone joining the call) can unblock a stream quest right away.
+    StreamStore?.addChangeListener?.(onQuestChange);
+    VoiceStateStore?.addChangeListener?.(onQuestChange);
     removeQuestListener = () => {
         QuestsStore.removeChangeListener?.(onQuestChange);
         if (isLinux && canRunGame) Dispatcher.unsubscribe?.("RUNNING_GAMES_CHANGE", onQuestChange);
+        StreamStore?.removeChangeListener?.(onQuestChange);
+        VoiceStateStore?.removeChangeListener?.(onQuestChange);
     };
+
+    /* ── fake games ──────────────────────────────────────────── */
+
+    // Every fake game process (a game quest's, the Play session's) goes through one patch of
+    // RunningGameStore, so both can run at once and removing one never unpatches the other.
+    // Newer builds also decide eligibility through these getters; only existing ones are patched.
+    const fakeGames = new Map(); // pid -> { game, priority }; the highest priority is "the" game
+    let gameOriginals = null;
+    const fakeList = () => [...fakeGames.values()].sort((a, b) => b.priority - a.priority).map(f => f.game);
+    const callOriginal = (key, args) => gameOriginals[key].apply(RunningGameStore, args);
+    const GAME_PATCHES = {
+        getRunningGames: (...a) => [...(callOriginal("getRunningGames", a) ?? []), ...fakeList()],
+        getGameForPID: (pid, ...a) => fakeGames.get(pid)?.game ?? callOriginal("getGameForPID", [pid, ...a]),
+        getVisibleGame: (...a) => fakeList()[0] ?? callOriginal("getVisibleGame", a),
+        getVisibleRunningGames: (...a) => [...(callOriginal("getVisibleRunningGames", a) ?? []), ...fakeList()],
+        getCandidateGames: (...a) => [...(callOriginal("getCandidateGames", a) ?? []), ...fakeList()],
+        getRunningDiscordApplicationIds: (...a) => {
+            const ids = callOriginal("getRunningDiscordApplicationIds", a);
+            const extra = fakeList().map(g => g.id);
+            return ids instanceof Set ? new Set([...ids, ...extra]) : [...(ids ?? []), ...extra];
+        }
+    };
+
+    // app: { name, executables } as returned by /applications/public or /applications/detectable.
+    function makeFakeGame(app, appId) {
+        const exeName = app.executables?.find(x => x.os === "win32")?.name?.replace(">", "") ?? `${app.name}.exe`;
+        // Windows PIDs are always multiples of 4, so an odd one can never belong to a real
+        // process: Discord's native side won't end up probing some unrelated running program.
+        const pid = Math.floor(Math.random() * 15000) * 4 + 1001;
+        return {
+            cmdLine: `C:\\Program Files\\${app.name}\\${exeName}`,
+            exeName,
+            exePath: `c:/program files/${app.name.toLowerCase()}/${exeName}`,
+            hidden: false,
+            isLauncher: false,
+            id: appId,
+            executables: [{ os: "win32", name: exeName, is_launcher: false }],
+            name: app.name,
+            overlay: false,
+            pid,
+            pidPath: [pid],
+            processName: app.name,
+            sandboxed: false,
+            start: Date.now()
+        };
+    }
+
+    function addFakeGame(game, priority = 0) {
+        if (!gameOriginals) {
+            gameOriginals = {};
+            for (const [key, fn] of Object.entries(GAME_PATCHES)) {
+                if (typeof RunningGameStore[key] !== "function") continue;
+                gameOriginals[key] = RunningGameStore[key];
+                RunningGameStore[key] = fn;
+            }
+        }
+        fakeGames.set(game.pid, { game, priority });
+        Dispatcher.dispatch({ type: "RUNNING_GAMES_CHANGE", removed: [], added: [game], games: RunningGameStore.getRunningGames() });
+    }
+
+    function removeFakeGame(game) {
+        if (!fakeGames.delete(game.pid)) return;
+        if (!fakeGames.size && gameOriginals) {
+            Object.assign(RunningGameStore, gameOriginals);
+            gameOriginals = null;
+        }
+        Dispatcher.dispatch({ type: "RUNNING_GAMES_CHANGE", removed: [game], added: [], games: RunningGameStore.getRunningGames() });
+    }
+
+    /* ── play session ────────────────────────────────────────── */
+
+    // Keeps fake games "running" so Discord counts playtime (one game) or games played (several,
+    // rotated): what the profile's game badges are based on. Discord counts real time, so this
+    // only works while Discord is open; the session resumes by itself after a restart.
+    const canPlay = canRunGame && !isLinux;
+    const play = {
+        games: prefs.get("play.games", []),     // [{ id, name, exeName }]
+        rotateMin: prefs.get("play.rotateMin", 30),
+        running: false, index: 0, since: 0, current: null, timer: null,
+        catalog: null, catalogLoading: false, error: null
+    };
+    const playSave = () => {
+        prefs.set("play.games", play.games);
+        prefs.set("play.rotateMin", play.rotateMin);
+        prefs.set("play.running", play.running);
+    };
+    function playShow(index) {
+        if (play.current) removeFakeGame(play.current);
+        play.index = index % play.games.length;
+        const g = play.games[play.index];
+        play.current = makeFakeGame({ name: g.name, executables: [{ os: "win32", name: g.exeName }] }, g.id);
+        play.since = Date.now();
+        addFakeGame(play.current, 0);
+        log(`Play: now "${g.name}".`);
+    }
+    function playStart() {
+        if (!canPlay || !play.games.length) return;
+        play.running = true;
+        playShow(play.index);
+        clearInterval(play.timer);
+        // With several games, rotate so each one counts as played.
+        play.timer = setInterval(() => {
+            if (play.games.length > 1 && Date.now() - play.since >= play.rotateMin * 60_000) playShow(play.index + 1);
+        }, 30_000);
+        playSave();
+    }
+    function playStop() {
+        clearInterval(play.timer);
+        play.timer = null;
+        if (play.current) removeFakeGame(play.current);
+        play.current = null;
+        play.running = false;
+        playSave();
+    }
+    // On destroy the game goes away but the saved "running" stays, so the next load resumes.
+    playCleanup = () => {
+        clearInterval(play.timer);
+        if (play.current) removeFakeGame(play.current);
+    };
+    // Discord's list of games it can detect (large: fetched once, when the search is first used).
+    async function loadCatalog() {
+        if (play.catalog || play.catalogLoading) return;
+        play.catalogLoading = true;
+        try {
+            const res = await api.get({ url: "/applications/detectable" });
+            play.catalog = (res.body ?? [])
+                .map(a => ({ id: a.id, name: a.name, exeName: a.executables?.find(x => x.os === "win32")?.name }))
+                .filter(a => a.exeName);
+            play.error = null;
+        } catch (e) {
+            play.error = errMsg(e);
+        } finally {
+            play.catalogLoading = false;
+        }
+    }
+    function playSearch(query) {
+        const q = query.trim().toLowerCase();
+        if (!q || !play.catalog) return [];
+        const starts = a => (a.name.toLowerCase().startsWith(q) ? 0 : 1);
+        return play.catalog
+            .filter(a => a.name.toLowerCase().includes(q) && !play.games.some(g => g.id === a.id))
+            .sort((a, b) => starts(a) - starts(b) || a.name.length - b.name.length)
+            .slice(0, 6);
+    }
+    function playAdd(id) {
+        const app = play.catalog?.find(a => a.id === id);
+        if (!app || play.games.some(g => g.id === id)) return;
+        play.games.push(app);
+        playSave();
+    }
+    function playRemove(id) {
+        const i = play.games.findIndex(g => g.id === id);
+        if (i < 0) return;
+        const wasCurrent = play.running && play.index === i;
+        play.games.splice(i, 1);
+        if (!play.games.length) playStop();
+        else if (wasCurrent) playShow(i);
+        else if (i < play.index) play.index--;
+        playSave();
+    }
+    if (canPlay && prefs.get("play.running", false)) playStart();
 
     log("Ready. Panel in the bottom-right corner; orbs.check() forces a check.");
 
@@ -554,14 +805,19 @@
             if (task.startsWith("WATCH_VIDEO")) await doVideo(q, task, target, alive, report);
             else if (task === "PLAY_ON_DESKTOP") await doGame(q, task, target, alive, report);
             else if (task === "PLAY_ACTIVITY") await doActivity(q, task, target, alive, report);
+            else if (task === "STREAM_ON_DESKTOP") await doStream(q, task, target, alive, report);
             if (alive()) {
                 done.add(q.id);
                 finishedSinceIdle++;
+                // The first completed quest grants the Quest badge.
+                loadBadges();
                 log(`"${name}" completed! Claim the reward on the Quests page.`);
                 const orbs = orbsOf(q);
                 notify(t("nCompleted", { name }), orbs ? t("orbsReady", { n: orbs.toLocaleString() }) : t("rewardReady"));
             }
         } catch (e) {
+            // The stream ended mid-quest: not a failure, it waits for the next Go Live.
+            if (e.code === "STREAM_ENDED") return log(`"${name}" paused: the stream ended (progress is kept).`);
             failed.set(q.id, errMsg(e));
             warn(`"${name}" failed:`, errMsg(e));
             notify(t("nFailed", { name }), errMsg(e));
@@ -607,53 +863,10 @@
         const nativeGame = detectedGameOf(q);
         if (isLinux && !nativeGame)
             throw new Error(`Start ${app.name} under Wine/Proton and wait for Discord to detect it, then press Check now`);
-        const executable = app.executables?.find(x => x.os === "win32");
-        const exeName = executable?.name?.replace(">", "") ?? `${app.name}.exe`;
-        const exePath = `c:/program files/${app.name.toLowerCase()}/${exeName}`;
-
-        // Windows PIDs are always multiples of 4, so an odd one can never belong to a real
-        // process: Discord's native side won't end up probing some unrelated running program.
-        const pid = Math.floor(Math.random() * 15000) * 4 + 1001;
-        const fakeGame = {
-            cmdLine: `C:\\Program Files\\${app.name}\\${exeName}`,
-            exeName,
-            exePath,
-            hidden: false,
-            isLauncher: false,
-            id: appId,
-            executables: [{ os: "win32", name: exeName, is_launcher: false }],
-            name: app.name,
-            overlay: false,
-            pid,
-            pidPath: [pid],
-            processName: app.name,
-            sandboxed: false,
-            start: Date.now()
-        };
-
-        // Keep Discord's native detection when a real process is already visible.
-        const realGames = RunningGameStore.getRunningGames() ?? [];
-        const withFake = games => [...(games ?? []), fakeGame];
-        const patches = {
-            getRunningGames: (...args) => withFake(originals.getRunningGames.apply(RunningGameStore, args)),
-            getGameForPID: (p, ...args) => p === pid ? fakeGame : originals.getGameForPID.call(RunningGameStore, p, ...args),
-            getVisibleGame: () => fakeGame,
-            getVisibleRunningGames: (...args) => withFake(originals.getVisibleRunningGames.apply(RunningGameStore, args)),
-            getCandidateGames: (...args) => withFake(originals.getCandidateGames.apply(RunningGameStore, args)),
-            getRunningDiscordApplicationIds: (...args) => {
-                const ids = originals.getRunningDiscordApplicationIds.apply(RunningGameStore, args);
-                return ids instanceof Set ? new Set([...ids, appId]) : [...(ids ?? []), appId];
-            }
-        };
-        const originals = {};
-        if (!nativeGame) {
-            for (const [k, fn] of Object.entries(patches)) {
-                if (typeof RunningGameStore[k] !== "function") continue;
-                originals[k] = RunningGameStore[k];
-                RunningGameStore[k] = fn;
-            }
-            Dispatcher.dispatch({ type: "RUNNING_GAMES_CHANGE", removed: [], added: [fakeGame], games: withFake(realGames) });
-        }
+        // Keep Discord's native detection when a real process is already visible. The quest's
+        // game outranks a Play session game, so it's the one Discord treats as being played.
+        const fakeGame = nativeGame ? null : makeFakeGame(app, appId);
+        if (fakeGame) addFakeGame(fakeGame, 1);
 
         let resolveDone, lastBeat = Date.now(), progress = progressOf(q, task), beatError = null, beatFailures = 0;
         const finished = new Promise(r => (resolveDone = r));
@@ -690,10 +903,7 @@
             cleaned = true;
             Dispatcher.unsubscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", onBeat);
             Dispatcher.unsubscribe("QUESTS_SEND_HEARTBEAT_FAILURE", onBeatFailure);
-            if (!nativeGame) {
-                Object.assign(RunningGameStore, originals);
-                Dispatcher.dispatch({ type: "RUNNING_GAMES_CHANGE", removed: [fakeGame], added: [], games: RunningGameStore.getRunningGames() });
-            }
+            if (fakeGame) removeFakeGame(fakeGame);
             resolveDone();
         };
         state.cleanups.add(cleanup);
@@ -703,6 +913,71 @@
             while (alive() && progress < target) {
                 if (beatError) throw new Error(`Discord rejected the game heartbeat: ${beatError}`);
                 if (Date.now() - lastBeat > 3 * 60_000) throw new Error("Discord sent no heartbeat for 3 min");
+                await Promise.race([finished, sleep(5000)]);
+            }
+        } finally {
+            state.cleanups.delete(cleanup);
+            cleanup();
+        }
+    }
+
+    // You stream (any window) with someone in the call; Discord then sends the quest heartbeats
+    // itself, and the only thing faked is which application the stream is of.
+    async function doStream(q, task, target, alive, report) {
+        const appId = taskConfigOf(q).tasks[task].applications?.[0]?.id ?? q.config.application?.id;
+        if (!appId) throw new Error("quest has no application id");
+        // Odd PID: never a real Windows process (see doGame).
+        const pid = Math.floor(Math.random() * 15000) * 4 + 1001;
+        const original = StreamStore.getStreamerActiveStreamMetadata;
+        StreamStore.getStreamerActiveStreamMetadata = () => ({ id: appId, pid, sourceName: null });
+
+        let lastBeat = Date.now(), progress = progressOf(q, task), beatError = null, beatFailures = 0, resolveDone;
+        const finished = new Promise(r => (resolveDone = r));
+        const onBeat = data => {
+            if (data.questId !== q.id) return;
+            lastBeat = Date.now();
+            beatFailures = 0;
+            progress = q.config.configVersion === 1
+                ? data.userStatus.streamProgressSeconds
+                : Math.floor(data.userStatus.progress?.[task]?.value ?? 0);
+            report(progress);
+            if (progress >= target) resolveDone();
+        };
+        // Same tolerance as game quests: rate limits and server errors are retried by Discord,
+        // a 4xx or five failures in a row end the quest.
+        const onBeatFailure = data => {
+            if (data.questId !== q.id) return;
+            const error = data.error ?? data;
+            const status = error.status ?? error.httpStatus;
+            if ((status !== 429 && status >= 400 && status < 500) || ++beatFailures >= 5) {
+                beatError = errMsg(error);
+                resolveDone();
+            }
+        };
+        Dispatcher.subscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", onBeat);
+        Dispatcher.subscribe("QUESTS_SEND_HEARTBEAT_FAILURE", onBeatFailure);
+        let cleaned = false;
+        const cleanup = () => {
+            if (cleaned) return;
+            cleaned = true;
+            Dispatcher.unsubscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", onBeat);
+            Dispatcher.unsubscribe("QUESTS_SEND_HEARTBEAT_FAILURE", onBeatFailure);
+            StreamStore.getStreamerActiveStreamMetadata = original;
+            resolveDone();
+        };
+        state.cleanups.add(cleanup);
+
+        log(`  streaming as "${appId}" (~${Math.ceil((target - progress) / 60)} min). Keep the stream on and someone in the call.`);
+        try {
+            while (alive() && progress < target) {
+                if (streamState() !== "ready") {
+                    const err = new Error("stream ended");
+                    err.code = "STREAM_ENDED";
+                    throw err;
+                }
+                if (beatError) throw new Error(`Discord rejected the stream heartbeat: ${beatError}`);
+                if (Date.now() - lastBeat > 3 * 60_000)
+                    throw new Error("Discord sent no heartbeat for 3 min: it didn't accept the stream for this quest");
                 await Promise.race([finished, sleep(5000)]);
             }
         } finally {
@@ -841,11 +1116,29 @@
 #orbs-root .txt .m{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--o-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #orbs-root li.err .txt .m{color:var(--o-err)}
 #orbs-root li.warn .txt .m{color:var(--o-warn)}
+#orbs-root li.warn .txt .m,#orbs-root li.err .txt .m{white-space:normal;flex-wrap:wrap;row-gap:2px}
 #orbs-root .mini{height:3px;border-radius:2px;background:var(--o-line);margin-top:6px;overflow:hidden}
 #orbs-root .mini i{display:block;height:100%;background:var(--o-brand);border-radius:2px}
 #orbs-root .orbs{display:inline-flex;align-items:center;gap:3px;color:var(--o-text);font-weight:600}
 #orbs-root .chip{flex:none;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--o-bg2);color:var(--o-muted)}
 #orbs-root .tag{font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px;background:var(--o-hover);color:var(--o-muted)}
+#orbs-root .ico img{width:20px;height:20px;object-fit:contain}
+#orbs-root .owned{display:flex;flex-wrap:wrap;gap:6px;padding:2px 8px 8px}
+#orbs-root .owned img{width:22px;height:22px;object-fit:contain}
+#orbs-root .houses{display:flex;gap:6px;margin-top:6px}
+#orbs-root .house{height:24px;padding:0 8px;border-radius:6px;background:var(--o-hover);font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:background .12s}
+#orbs-root .house:hover:not(:disabled){background:var(--o-active)}
+#orbs-root .house i{width:8px;height:8px;border-radius:50%}
+#orbs-root .searchbox{padding:6px 8px 4px}
+#orbs-root .search{width:100%;height:32px;padding:0 10px;border:0;border-radius:8px;background:var(--input-background,var(--background-tertiary,#1e1f22));color:var(--o-text);font:inherit;font-size:13px;outline:none}
+#orbs-root .search:focus{box-shadow:0 0 0 2px var(--o-brand)}
+#orbs-root .search::placeholder{color:var(--o-muted)}
+#orbs-root .chips{display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:12px;color:var(--o-muted)}
+#orbs-root .chips button{height:22px;padding:0 8px;border-radius:6px;background:var(--o-hover);font-size:12px;font-weight:600;color:var(--o-text)}
+#orbs-root .chips button.on{background:var(--o-brand);color:#fff}
+#orbs-root .hint{padding:6px 8px 10px;font-size:12px;color:var(--o-muted)}
+#orbs-root li .ib{width:28px;height:28px}
+#orbs-root li.live .ico{color:var(--o-ok)}
 
 #orbs-root .foot{display:flex;align-items:center;gap:14px;padding:10px 12px 12px 16px;border-top:1px solid var(--o-line)}
 #orbs-root .sw{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--o-muted)}
@@ -883,11 +1176,15 @@
             video: ["M3 6.5A2.5 2.5 0 0 1 5.5 4h13A2.5 2.5 0 0 1 21 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z", "M10 9.2v5.6l4.6-2.8z"],
             game: ["M6 12h4", "M8 10v4", "M15 13h.01", "M18 11h.01", "M17.3 6H6.7a4 4 0 0 0-4 3.6C2.6 10.4 2 14.5 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.4-1.4a2 2 0 0 1 1.4-.6h4.4a2 2 0 0 1 1.4.6L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.5-.6-5.6-.7-6.4a4 4 0 0 0-4-3.6z"],
             activity: ["M13 2 4 14h8l-1 8 9-12h-8z"],
+            stream: ["M3 5.5A1.5 1.5 0 0 1 4.5 4h15A1.5 1.5 0 0 1 21 5.5v10a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 15.5z", "M8 21h8", "M12 17v4"],
             check: ["M20 6 9 17l-5-5"],
             alert: ["M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z", "M12 8v4.5", "M12 16h.01"],
             gift: ["M3 9h18v4H3z", "M5 13h14v8H5z", "M12 9v12", "M12 9S10.5 3.5 7.5 4.5C5 5.4 7 9 12 9zM12 9s1.5-5.5 4.5-4.5C19 5.4 17 9 12 9z"],
             download: ["M12 3v12", "m7 10 5 5 5-5", "M5 21h14"],
-            copy: ["M9 9h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11a2 2 0 0 1-2-2z", "M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"]
+            shield: ["M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"],
+            code: ["m8 8-4 4 4 4", "m16 8 4 4-4 4", "m13.5 5-3 14"],
+            copy: ["M9 9h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11a2 2 0 0 1-2-2z", "M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"],
+            x: ["M18 6 6 18", "m6 6 12 12"]
         };
         function icon(name, size = 16) {
             const s = svgEl("svg", {
@@ -954,7 +1251,21 @@
         const hero = el("div");
         const banners = el("div");
         const list = el("div");
-        const body = el("div", "body", hero, banners, list);
+        // The Play section lives outside `list` (which is rebuilt) so the search box keeps its
+        // text and focus while typing.
+        const playHead = el("button", "sec closed");
+        playHead.dataset.action = "play";
+        const playStatus = el("ul");
+        const playGames = el("ul");
+        const playRotate = el("div", "chips");
+        const playInput = el("input", "search");
+        playInput.type = "text";
+        playInput.spellcheck = false;
+        const playResults = el("ul");
+        const playHint = el("div", "hint");
+        const playContent = el("div", null, playStatus, playGames, playRotate, el("div", "searchbox", playInput), playResults, playHint);
+        const playBox = el("div", null, playHead, playContent);
+        const body = el("div", "body", hero, banners, list, playBox);
         const acceptSw = toggle();
         const notifySw = toggle();
         const langBtn = el("button", "lang");
@@ -1047,7 +1358,11 @@
         /* behaviour */
 
         // null = automatic (open on the Quests page); true/false = the user chose.
-        let manualOpen = null, lastPath = location.pathname, showOther = false;
+        let manualOpen = null, lastPath = location.pathname, showOther = false, showBadges = false, showPlay = false;
+        let playSig = null, statusSig = null, playHeadSig = null;
+        playInput.addEventListener("input", () => drawPlayResults());
+        // The game list is big: fetched the first time the search box is used.
+        playInput.addEventListener("focus", () => { if (!play.catalog) loadCatalog().then(drawPlayResults); });
         const onQuestPage = () => /quest/i.test(location.pathname);
         const setOpen = open => { manualOpen = open; render(); };
 
@@ -1098,9 +1413,29 @@
             if (target.dataset.claim !== undefined) openQuest(target.dataset.claim || undefined);
             else if (target.dataset.action === "retry") window.orbs.check();
             else if (target.dataset.action === "other") showOther = !showOther;
+            else if (target.dataset.action === "badges") {
+                showBadges = !showBadges;
+                // Opening the section re-reads the profile, so new badges show up.
+                if (showBadges) loadBadges().then(() => { lastSignature = null; render(); });
+            }
+            else if (target.dataset.action === "hypesquad") joinHypeSquad(Number(target.dataset.house)).then(() => { lastSignature = null; render(); });
+            else if (target.dataset.action === "shop") navigate(shopPath());
+            else if (target.dataset.action === "devguide") window.open("https://discord.com/developers/active-developer", "_blank");
+            else if (target.dataset.action === "play") showPlay = !showPlay;
+            else if (target.dataset.action === "play-start") playStart();
+            else if (target.dataset.action === "play-stop") playStop();
+            else if (target.dataset.action === "play-remove") playRemove(target.dataset.id);
+            else if (target.dataset.action === "play-rotate") {
+                play.rotateMin = Number(target.dataset.min);
+                playSave();
+            } else if (target.dataset.action === "play-add") {
+                playAdd(target.dataset.id);
+                playInput.value = "";
+                drawPlayResults();
+            }
             else if (target.dataset.action === "update") openReleasePage();
             else if (target.dataset.action === "report") copyReport();
-            lastSignature = null;
+            lastSignature = playSig = statusSig = playHeadSig = null;
             render();
         });
 
@@ -1146,8 +1481,18 @@
 
         // Without the router, push the URL into history and fire popstate (Discord's router
         // listens to it); location.assign would reload the whole app.
-        function openQuest(id) {
-            const path = questPath(id);
+        const openQuest = id => navigate(questPath(id));
+        // The Shop's route from the same table (its key changed over time), else /shop.
+        function shopPath() {
+            questPath();
+            const key = questRoutes && ["COLLECTIBLES_SHOP", "SHOP"].find(k => k in questRoutes);
+            const route = key && questRoutes[key];
+            if (typeof route === "function") {
+                try { return route(); } catch { }
+            }
+            return typeof route === "string" ? route : "/shop";
+        }
+        function navigate(path) {
             transitionTo ??= findTransitionTo();
             if (transitionTo) {
                 try { return transitionTo(path); } catch (e) { warn("transitionTo failed:", errMsg(e)); }
@@ -1194,7 +1539,8 @@
             WATCH_VIDEO: ["video", "video"],
             WATCH_VIDEO_ON_MOBILE: ["video", "video"],
             PLAY_ON_DESKTOP: ["game", "game"],
-            PLAY_ACTIVITY: ["activity", "activity"]
+            PLAY_ACTIVITY: ["activity", "activity"],
+            STREAM_ON_DESKTOP: ["stream", "stream"]
         };
         // [icon, translated label]
         const taskOf = q => {
@@ -1210,6 +1556,9 @@
             const remaining = targetOf(q, task) - progressOf(q, task);
             if (us.claimedAt) return { group: "other", tone: "dim", detail: t("claimed"), chip: t("claimedChip") };
             if (us.completedAt || done.has(q.id)) return { group: "ready", tone: "ready", detail: t("completed"), action: "claim" };
+            // Enrolled stream quests wait for you to Go Live with company (see streamState).
+            if (task === "STREAM_ON_DESKTOP" && us.enrolledAt && !waitingStore(q) && !failed.has(q.id) && streamState() !== "ready")
+                return { group: "attention", tone: "warn", detail: t(streamState() === "alone" ? "streamAlone" : "streamNeeded") };
             if (isLinux && task === "PLAY_ON_DESKTOP" && !detectedGameOf(q))
                 return { group: "attention", tone: "warn", detail: t("wine") };
             if (!us.enrolledAt && enrollFailed.has(q.id))
@@ -1256,13 +1605,68 @@
             return el("li", c.tone, el("div", "ico", icon(c.group === "ready" ? "gift" : c.tone === "err" ? "alert" : ico, 16)), txt, side);
         }
 
+        // opts.toggle = { open, action } makes the title a collapse button; opts.count replaces
+        // the item count; opts.extra goes on the right of the title.
         function section(title, items, opts = {}) {
             if (!items.length) return [];
+            const count = el("span", "c num", opts.count ?? String(items.length));
             const heading = opts.toggle
-                ? el("button", `sec${showOther ? "" : " closed"}`, icon("chevron", 14), title, el("span", "c num", String(items.length)))
-                : el("div", "sec", title, el("span", "c num", String(items.length)), opts.extra ? el("span", "grow") : null, opts.extra ?? null);
-            if (opts.toggle) heading.dataset.action = "other";
-            return opts.toggle && !showOther ? [heading] : [heading, el("ul", null, ...items)];
+                ? el("button", `sec${opts.toggle.open ? "" : " closed"}`, icon("chevron", 14), title, count)
+                : el("div", "sec", title, count, opts.extra ? el("span", "grow") : null, opts.extra ?? null);
+            if (opts.toggle) heading.dataset.action = opts.toggle.action;
+            return opts.toggle && !opts.toggle.open ? [heading] : [heading, el("ul", null, ...items)];
+        }
+
+        // The badges an account can earn on its own (see loadBadges), matched by profile badge id.
+        const BADGES = [
+            { key: "quest", icon: "gift", how: "badgeQuestHow", match: id => id === "quest_completed" },
+            { key: "hypesquad", icon: "shield", how: "badgeHypeHow", match: id => id.startsWith("hypesquad_house"), action: "hypesquad" },
+            { key: "orbs", icon: "orb", how: "badgeOrbsHow", match: id => /orb/i.test(id), action: "shop" },
+            { key: "activeDev", icon: "code", how: "badgeDevHow", match: id => id === "active_developer", action: "devguide" }
+        ];
+        const HOUSES = [[1, "Bravery", "#9c84ef"], [2, "Brilliance", "#f47b67"], [3, "Balance", "#45ddc0"]];
+        const badgeImg = b => {
+            const img = el("img");
+            img.src = `https://cdn.discordapp.com/badge-icons/${b.icon}.png`;
+            img.alt = img.title = b.description ?? b.id;
+            return img;
+        };
+
+        function badgeItems() {
+            if (!badges.list) {
+                const text = badges.error ? t("badgesError", { e: badges.error }) : t("badgesLoading");
+                return [el("li", badges.error ? "err" : "dim", el("div", "ico", icon(badges.error ? "alert" : "refresh", 16)),
+                    el("div", "txt", el("div", "m", text)))];
+            }
+            const rows = BADGES.map(def => {
+                const owned = badges.list.find(b => def.match(b.id));
+                const txt = el("div", "txt", el("div", "n", t(`badge_${def.key}`)),
+                    el("div", "m", owned ? (owned.description ?? t("badgeOwned")) : t(def.how)));
+                let side = null;
+                if (owned) {
+                    side = el("span", "chip", "✓");
+                } else if (def.action === "hypesquad") {
+                    txt.append(el("div", "houses", ...HOUSES.map(([id, name, color]) => {
+                        const dotEl = el("i");
+                        dotEl.style.background = color;
+                        const b = el("button", "house", dotEl, badges.busy ? t("joining") : name);
+                        b.dataset.action = "hypesquad";
+                        b.dataset.house = id;
+                        b.disabled = badges.busy;
+                        return b;
+                    })));
+                } else if (def.action) {
+                    side = el("button", "btn ghost", t(def.action === "shop" ? "shop" : "guide"));
+                    side.dataset.action = def.action;
+                }
+                return el("li", owned ? "ready" : "", el("div", "ico", owned ? badgeImg(owned) : def.icon === "orb" ? orb(18) : icon(def.icon, 16)), txt, side);
+            });
+            // The profile's other badges (Nitro, Boost…) as a strip above the four rows.
+            const others = badges.list.filter(b => !BADGES.some(d => d.match(b.id)));
+            if (others.length) rows.unshift(el("li", "owned", ...others.map(badgeImg)));
+            if (badges.error) rows.push(el("li", "err", el("div", "ico", icon("alert", 16)),
+                el("div", "txt", el("div", "m", t("badgesError", { e: badges.error })))));
+            return rows;
         }
 
         /* render */
@@ -1402,6 +1806,100 @@
                 banners.replaceChildren(...items);
             }
             drawList(ready, cur, claimOrbs);
+            drawPlay(ready);
+        }
+
+        // Long durations for the Play session ("2 h 5 min").
+        const longDuration = ms => {
+            const m = Math.max(0, Math.round(ms / 60000));
+            const h = Math.floor(m / 60);
+            return h ? `${h} h ${m % 60} min` : `${m} min`;
+        };
+        const textRow = (cls, text) => el("li", cls, el("div", "txt", el("div", "m", text)));
+
+        // Each part is rebuilt only when its text changes, never the search box.
+        function drawPlay(ready) {
+            playBox.style.display = ready ? "" : "none";
+            if (!ready) return;
+            const headSig = [showPlay, play.games.length, play.running, lang()].join("|");
+            if (headSig !== playHeadSig) {
+                playHeadSig = headSig;
+                playHead.className = `sec${showPlay ? "" : " closed"}`;
+                playHead.replaceChildren(icon("chevron", 14), t("play"),
+                    el("span", "c num", play.running ? "●" : t("playCount", play.games.length)));
+            }
+            playContent.style.display = showPlay ? "" : "none";
+            if (!showPlay) return;
+            if (!canPlay) {
+                if (statusSig !== "unavailable") {
+                    statusSig = "unavailable";
+                    playStatus.replaceChildren(textRow("dim", t("playUnavailable")));
+                    for (const part of [playGames, playRotate, playResults]) part.replaceChildren();
+                    playInput.parentElement.style.display = playHint.style.display = "none";
+                }
+                return;
+            }
+
+            // Status: what's being played, for how long, and when the rotation moves on.
+            const elapsed = Date.now() - play.since;
+            const live = play.running && play.current;
+            const name = live ? t("playing", { name: play.current.name }) : t("notPlaying");
+            const meta = live
+                ? [t("playingFor", { d: longDuration(elapsed) }),
+                    play.games.length > 1 ? t("nextIn", { d: longDuration(play.rotateMin * 60000 - elapsed) }) : null].filter(Boolean).join(" · ")
+                : play.games.length ? "" : t("playPick");
+            const sSig = [name, meta, play.running, play.games.length > 0, lang()].join("|");
+            if (sSig !== statusSig) {
+                statusSig = sSig;
+                const btn = el("button", live ? "btn ghost" : "btn", t(live ? "stop" : "start"));
+                btn.dataset.action = live ? "play-stop" : "play-start";
+                btn.disabled = !play.games.length;
+                playStatus.replaceChildren(el("li", live ? "live" : "",
+                    el("div", "ico", icon(live ? "game" : "play", 16)),
+                    el("div", "txt", el("div", "n", name), meta ? el("div", "m num", meta) : null), btn));
+            }
+
+            // Chosen games, and the rotation interval when there are several.
+            const gSig = JSON.stringify([play.games.map(g => g.id), play.index, play.running, play.rotateMin, lang()]);
+            if (gSig !== playSig) {
+                playSig = gSig;
+                playGames.replaceChildren(...play.games.map((g, i) => {
+                    const rm = el("button", "ib", icon("x", 16));
+                    rm.dataset.action = "play-remove";
+                    rm.dataset.id = g.id;
+                    label(rm, t("remove"));
+                    const now = play.running && i === play.index;
+                    return el("li", now ? "live" : "", el("div", "ico", icon("game", 16)),
+                        el("div", "txt", el("div", "n", g.name), el("div", "m", g.exeName)), rm);
+                }));
+                playRotate.replaceChildren(...(play.games.length > 1 ? [t("switchEvery"), ...[10, 30, 60].map(min => {
+                    const b = el("button", play.rotateMin === min ? "on" : "", `${min} min`);
+                    b.dataset.action = "play-rotate";
+                    b.dataset.min = min;
+                    return b;
+                })] : []));
+            }
+            playInput.placeholder = t("searchGames");
+            playHint.textContent = t("playHint");
+        }
+
+        function drawPlayResults() {
+            const query = playInput.value;
+            if (!query.trim()) return playResults.replaceChildren();
+            if (!play.catalog) {
+                if (!play.catalogLoading && !play.error) loadCatalog().then(drawPlayResults);
+                return playResults.replaceChildren(play.error
+                    ? textRow("err", t("badgesError", { e: play.error }).replace(/^[^:]+/, t("noResults")))
+                    : textRow("dim", t("loadingGames")));
+            }
+            const found = playSearch(query);
+            playResults.replaceChildren(...(found.length ? found.map(app => {
+                const add = el("button", "btn ghost", "+");
+                add.dataset.action = "play-add";
+                add.dataset.id = app.id;
+                return el("li", null, el("div", "ico", icon("game", 16)),
+                    el("div", "txt", el("div", "n", app.name), el("div", "m", app.exeName)), add);
+            }) : [textRow("dim", t("noResults"))]));
         }
 
         // Sections. Rows follow the same priority the runner uses.
@@ -1414,7 +1912,8 @@
             const queue = new Map(pendingQuests().map((q, i) => [q.id, i + 1]));
             const rows = quests.map(q => [q, classify(q, queue.get(q.id))]);
             // Re-render the list only when something visible changed (avoids a layout per second).
-            const signature = JSON.stringify([showOther, readyOrbs, rows.map(([q, c]) => [q.id, c.group, c.tone, c.detail, c.chip, Math.round((c.pct ?? 0) * 100)])]);
+            const signature = JSON.stringify([showOther, showBadges, badges.list?.map(b => b.id), badges.error, badges.busy, readyOrbs,
+                rows.map(([q, c]) => [q.id, c.group, c.tone, c.detail, c.chip, Math.round((c.pct ?? 0) * 100)])]);
             if (signature === lastSignature) return;
             lastSignature = signature;
             const by = g => rows.filter(([, c]) => c.group === g).map(([q, c]) => questItem(q, c));
@@ -1425,7 +1924,11 @@
                 ...section(t("ready"), by("ready"), { extra: readyOrbs ? orbAmount(readyOrbs) : null }),
                 ...section(t("next"), next),
                 ...section(t("attention"), by("attention")),
-                ...section(t("other"), by("other"), { toggle: true }));
+                ...section(t("other"), by("other"), { toggle: { open: showOther, action: "other" } }),
+                ...section(t("badges"), badgeItems(), {
+                    toggle: { open: showBadges, action: "badges" },
+                    count: badges.list ? `${BADGES.filter(d => badges.list.some(b => d.match(b.id))).length}/${BADGES.length}` : ""
+                }));
         }
 
         const renderTimer = setInterval(render, 1000);

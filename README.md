@@ -63,6 +63,8 @@ and open the new exe again (`1`, Install / update).
 - A red badge on the panel (even minimized) counts the rewards ready to claim; hover it for the total orbs.
 - Drag the orb (or the open panel by its header) anywhere; double-click the header to put it back in the corner. The position, language and toggles are remembered.
 - English and Portuguese: follows Discord's language, or switch with the **EN/PT** button in the panel.
+- **Badges** section: shows the badges on your profile and how to earn the ones an account can get on its own. Quest comes from completing any quest (the queue does it), HypeSquad is a one-click free house, Orbs opens the Shop (buying is up to you) and Active Developer links the official guide (it needs a bot of yours). Paid or staff-granted badges can't be earned by a script.
+- **Play** section: search Discord's game list, pick games and press **Start**. With one game Discord counts hours played; with several the script rotates them (every 10, 30 or 60 min) so they count as games played. These are what the profile's game badges (playtime, games played) are based on. Discord counts real time and only while it's open; the session resumes after a restart. It shows as "Playing …" to everyone, like a real game. Windows only.
 - Desktop notifications when a quest finishes, fails, or the whole queue is done. Clicking one opens the Quests page. Toggle them with **Notifications** in the panel.
 - Update check: every 6 hours it looks for a newer [release](https://github.com/devbluen/discord-auto-quest/releases). If there is one, the panel shows **Update available** with a **Download** button and a desktop notification is sent once. The exe's menu also shows it.
 - When Discord updates, the script re-applies itself to the new version if that version was already downloaded when Discord closed. If the panel disappears after an update, open the exe and install again.
@@ -73,7 +75,9 @@ and open the new exe again (`1`, Install / update).
 | `PLAY_ON_DESKTOP` | on official Discord for Windows, fakes the game's process; on official Discord for Linux, tracks a game Discord has detected |
 | `PLAY_ACTIVITY` | sends a heartbeat every 20 s using a DM or voice channel |
 
-Not supported: `STREAM_ON_DESKTOP` (needs a real Go Live with someone else in the call) and achievement quests.
+`STREAM_ON_DESKTOP` is **assisted** and untested: Discord only counts it while you really Go Live with someone else in the voice channel, which a script can't fake. Stream any window with a friend (or a second account) in the call; the script notices and makes Discord read the stream as the quest's game. Until then the quest waits under *Needs attention* without holding up the queue.
+
+Not supported: achievement quests.
 
 ## Something broke?
 

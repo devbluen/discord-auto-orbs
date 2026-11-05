@@ -1,7 +1,7 @@
 // Builds dist/discord-orbs.exe: a Node single executable application (SEA) with the installer
 // as its entry point and the payload it extracts (quests.js, inject.cjs, patcher.cjs) as assets.
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import postject from "postject";
@@ -20,8 +20,19 @@ if (process.platform === "linux") {
     if (existsSync(join(src, "dummy-game-win.exe"))) payload.push("dummy-game-win.exe");
 }
 
-rmSync(dist, { recursive: true, force: true });
-mkdirSync(dist);
+// Empty dist/ instead of deleting it: Windows refuses to remove a folder that Explorer, a
+// terminal or the antivirus has open (EBUSY), but the files inside can usually still go.
+mkdirSync(dist, { recursive: true });
+for (const entry of readdirSync(dist)) {
+    try {
+        rmSync(join(dist, entry), { recursive: true, force: true });
+    } catch (e) {
+        if (!["EBUSY", "EPERM"].includes(e.code)) throw e;
+        console.error(`\n${join(dist, entry)} is in use (${e.code}).`);
+        console.error("Close discord-orbs.exe if it's open (or wait for the antivirus to finish scanning it), then run the build again.");
+        process.exit(1);
+    }
+}
 
 // The exe has no package.json next to it, so the version (used by the update check) ships as an asset.
 const versionPath = join(dist, "version.json");

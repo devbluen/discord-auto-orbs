@@ -53,6 +53,8 @@ e abra o exe novo (`1`, Install / update).
 - Uma bolinha vermelha no painel (mesmo minimizado) conta as recompensas prontas para resgatar; passe o mouse para ver o total de orbs.
 - Arraste o orb (ou o painel aberto pelo cabeçalho) para qualquer lugar; clique duas vezes no cabeçalho para voltar ao canto. A posição, o idioma e as chaves ficam salvos.
 - Português e inglês: segue o idioma do Discord, ou troque pelo botão **EN/PT** no painel.
+- Seção **Insígnias**: mostra as insígnias do seu perfil e como conseguir as que uma conta pode obter sozinha. Missão vem de completar qualquer missão (a fila faz isso), HypeSquad é uma casa grátis em um clique, Orbs abre a Loja (comprar é com você) e Desenvolvedor Ativo abre o guia oficial (precisa de um bot seu). Insígnias pagas ou dadas pela equipe do Discord não podem ser obtidas por script.
+- Seção **Jogar**: busque na lista de jogos do Discord, escolha os jogos e clique em **Iniciar**. Com um jogo o Discord conta horas jogadas; com vários o script alterna entre eles (a cada 10, 30 ou 60 min) para contarem como jogos jogados. É disso que vêm as insígnias de jogo do perfil (tempo de jogo, jogos jogados). O Discord conta tempo real e só com ele aberto; a sessão volta sozinha depois de reiniciar. Aparece como "Jogando …" para todo mundo, como um jogo de verdade. Só no Windows.
 - Notificações na área de trabalho quando uma missão termina, falha ou quando a fila inteira acaba. Clicar numa delas abre a página de missões. Ligue/desligue em **Notifications** no painel.
 - Verificação de atualização: a cada 6 horas procura uma [release](https://github.com/devbluen/discord-auto-quest/releases) mais nova. Se houver, o painel mostra **Update available** com um botão **Download** e manda uma notificação na área de trabalho (uma vez por versão). O menu do exe também avisa.
 - Quando o Discord atualiza, o script se reaplica sozinho na versão nova se ela já estiver baixada quando o Discord fechar. Se o painel sumir depois de uma atualização, abra o exe e instale de novo.
@@ -63,7 +65,9 @@ e abra o exe novo (`1`, Install / update).
 | `PLAY_ON_DESKTOP` | no Discord oficial para Windows, finge o processo do jogo; no Discord oficial para Linux, acompanha um jogo detectado pelo Discord |
 | `PLAY_ACTIVITY` | manda um heartbeat a cada 20 s usando uma DM ou canal de voz |
 
-Não suportados: `STREAM_ON_DESKTOP` (exige uma live real com outra pessoa na call) e missões de conquista.
+`STREAM_ON_DESKTOP` é **assistida** e ainda não testada: o Discord só conta enquanto você transmite de verdade com outra pessoa no canal de voz, e isso um script não consegue fingir. Transmita qualquer janela com um amigo (ou uma segunda conta) na call; o script percebe e faz o Discord ler a transmissão como o jogo da missão. Até lá a missão espera em *Precisam de atenção* sem travar a fila.
+
+Não suportadas: missões de conquista.
 
 ## Deu problema?
 
