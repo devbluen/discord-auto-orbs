@@ -95,6 +95,15 @@
             searchGames: "Search Discord's games…", loadingGames: "Loading Discord's game list…", noResults: "No games found",
             remove: "Remove", playCount: n => `${n} game${n === 1 ? "" : "s"}`,
             playHint: "Discord counts real time while it's open. One game adds hours played; several (rotated) add games played. The profile's game badges come from these.",
+            farm: "Instant", run: "Run", farmGames: "games",
+            farmHours: "Hours played", farmHoursHow: "{h} h on {name}, in a few minutes", farmHoursNeedGame: "Add a game above first",
+            farmVariety: "Games played", farmVarietyHow: "100 random games, 2 min each",
+            farmStream: "Hours streamed", farmStreamHow: "{h} h · needs a real Go Live with a viewer",
+            farmRunning: "Crediting {done} / {total}",
+            farmNeedLive: "Go Live first (any window, in a voice channel)",
+            farmNeedViewer: "Someone needs to watch your stream (a second account works)",
+            farmHint: "Sends the sessions straight to Discord's activity data. Badges update overnight, usually within 1–3 days, and only with Privacy & Safety → \"Use data to personalize\" on.",
+            farmDone: "Badge farm finished", farmDoneBody: "{n} credited. Badges update within 1–3 days.",
             claimed: "Reward claimed", claimedChip: "Claimed", completed: "Completed",
             wine: "Waiting for Discord to detect the Wine game", couldntAccept: "Couldn't accept: {e}",
             accepting: "{d} · accepting…", notAccepted: "Not accepted · turn on Auto-accept",
@@ -138,6 +147,15 @@
             searchGames: "Buscar nos jogos do Discord…", loadingGames: "Carregando a lista de jogos do Discord…", noResults: "Nenhum jogo encontrado",
             remove: "Remover", playCount: n => `${n} jogo${n === 1 ? "" : "s"}`,
             playHint: "O Discord conta tempo real enquanto está aberto. Um jogo soma horas jogadas; vários (alternando) somam jogos jogados. As insígnias de jogo do perfil vêm disso.",
+            farm: "Instantâneo", run: "Rodar", farmGames: "jogos",
+            farmHours: "Horas jogadas", farmHoursHow: "{h} h em {name}, em poucos minutos", farmHoursNeedGame: "Adicione um jogo acima primeiro",
+            farmVariety: "Jogos jogados", farmVarietyHow: "100 jogos aleatórios, 2 min cada",
+            farmStream: "Horas transmitidas", farmStreamHow: "{h} h · precisa de uma live real com alguém assistindo",
+            farmRunning: "Creditando {done} / {total}",
+            farmNeedLive: "Inicie uma transmissão primeiro (qualquer janela, num canal de voz)",
+            farmNeedViewer: "Alguém precisa assistir sua live (uma segunda conta serve)",
+            farmHint: "Manda as sessões direto para os dados de atividade do Discord. As insígnias atualizam de madrugada, geralmente em 1 a 3 dias, e só com Privacidade e Segurança → \"Usar dados para personalizar\" ligado.",
+            farmDone: "Farm de insígnias concluído", farmDoneBody: "{n} creditados. As insígnias atualizam em 1 a 3 dias.",
             claimed: "Recompensa resgatada", claimedChip: "Resgatada", completed: "Concluída",
             wine: "Esperando o Discord detectar o jogo no Wine", couldntAccept: "Não foi possível aceitar: {e}",
             accepting: "{d} · aceitando…", notAccepted: "Não aceita · ligue o Auto-aceitar",
@@ -720,6 +738,7 @@
     playCleanup = () => {
         clearInterval(play.timer);
         if (play.current) removeFakeGame(play.current);
+        farm.stopping = true;
     };
     // Discord's list of games it can detect (large: fetched once, when the search is first used).
     async function loadCatalog() {
@@ -763,6 +782,197 @@
         playSave();
     }
     if (canPlay && prefs.get("play.running", false)) playStart();
+
+    /* ── badge farm (instant) ────────────────────────────────── */
+
+    // Idea and event formats from BadgeFarmer (github.com/aboveproof/BadgeFarmer, MIT), itself
+    // built on gameSessionSpoofer and discord-streamer. Instead of playing in real time, it posts
+    // the analytics events the client sends for a finished game session (or a stream heartbeat)
+    // to /science, which feeds the profile's activity badges. Discord processes them overnight,
+    // so badges move within 1–3 days, and only with Privacy → "Use data to personalize" on.
+    const SuperProps = find(getRequire(), v => hasFns(v, ["getSuperProperties"]), ["getSuperProperties"], false);
+    const FARM_CHUNK_HOURS = 24, FARM_MAX_BACKDATE = 24 * 3_600_000, FARM_DELAY_MS = 600;
+    const farm = {
+        mode: null,          // "hours" | "variety" | "stream" while running
+        done: 0, total: 0, error: null, stopping: false,
+        targetHours: prefs.get("farm.targetHours", 5000)
+    };
+    let analyticsToken = null, analyticsAt = 0, eventSeq = Math.floor(Math.random() * 100_000);
+    const uuid = () => crypto.randomUUID();
+
+    // Not the login token: a separate analytics token /users/@me hands out on request.
+    async function getAnalyticsToken() {
+        if (analyticsToken && Date.now() - analyticsAt < 12 * 3_600_000) return analyticsToken;
+        const res = await api.get({ url: "/users/@me?with_analytics_token=true" });
+        if (typeof res.body?.analytics_token !== "string")
+            throw new Error("Discord returned no analytics token (Privacy → \"Use data to personalize\" may be off)");
+        analyticsToken = res.body.analytics_token;
+        analyticsAt = Date.now();
+        return analyticsToken;
+    }
+    // The client's own session ids, so events look like they came from this client.
+    function clientSession() {
+        let p = {};
+        try { p = SuperProps?.getSuperProperties?.() ?? {}; } catch { }
+        return {
+            heartbeat: p.client_heartbeat_session_id ?? uuid(),
+            launch: p.launch_signature ?? uuid(),
+            locale: p.system_locale ?? "en-US"
+        };
+    }
+    function fingerprintFor(id) {
+        try {
+            const seen = [...(RunningGameStore.getRunningGames?.() ?? []), ...(RunningGameStore.getGamesSeen?.(true) ?? [])];
+            return seen.find(g => g.id === id && g.executableFingerprint)?.executableFingerprint ?? "";
+        } catch { return ""; }
+    }
+    const science = async events => api.post({ url: "/science", body: { token: await getAnalyticsToken(), events } });
+
+    // One finished session: initial heartbeat, launch, final heartbeat with the duration.
+    async function creditPlaytime(game, durationMs, start) {
+        const { heartbeat, launch, locale } = clientSession();
+        const gameSession = uuid();
+        const fingerprint = fingerprintFor(game.id);
+        const beat = (duration, initial, at) => ({
+            type: "running_game_heartbeat",
+            properties: {
+                client_track_timestamp: at, client_heartbeat_session_id: heartbeat, event_sequence_number: ++eventSeq,
+                game_id: game.id, game_name: game.name, game_metadata: null, game_executable: game.exeName,
+                game_detection_enabled: true, initial_heartbeat: initial, final_heartbeat: !initial,
+                game_session_id: gameSession, duration_tracked_ms: duration, rtc_connection_id: null,
+                media_session_id: null, launch_signature: launch, client_app_state: "focused", client_send_timestamp: at
+            }
+        });
+        const launchEvent = {
+            type: "launch_game",
+            properties: {
+                client_track_timestamp: start, client_heartbeat_session_id: heartbeat, event_sequence_number: ++eventSeq,
+                game: game.name, game_id: game.id, verified: true, elevated: false, is_launcher: false,
+                game_platform: "desktop", detection_method: "verified_game", is_overlay_enabled: false,
+                is_overlay_game_enabled: true, is_overlay_game_source: "OOP_DEFAULT_DATABASE", fullscreen_type: "UNKNOWN",
+                hardware_display_count: 1, overlay_method: "Disabled", activity_status_enabled: true,
+                activity_status_shared_guilds: [], current_user_status: "online", game_detection_enabled: true,
+                executable_path: game.exeName, voice_channel_id: null, voice_channel_type: null,
+                voice_channel_bitrate: null, voice_channel_guild_id: null, hidden_by_distributor: false,
+                game_metadata: null, client_performance_cpu: null, client_performance_memory: null, cpu_core_count: null,
+                accessibility_features: 0, rendered_locale: locale, launch_signature: launch, client_rtc_state: null,
+                client_app_state: "focused", client_send_timestamp: start,
+                ...(fingerprint ? { executable_fingerprint: fingerprint } : {})
+            }
+        };
+        await science([beat(0, true, start), launchEvent, beat(durationMs, false, start + durationMs)]);
+    }
+
+    async function withRetry(action) {
+        for (let attempt = 0; ; attempt++) {
+            try { return await action(); } catch (e) {
+                if (attempt >= 2 || farm.stopping) throw e;
+                await sleep(3000);
+            }
+        }
+    }
+
+    // Sessions are chained backwards from now so they don't overlap (start capped at 24 h ago).
+    async function farmHours(game) {
+        let cursor = Date.now();
+        farm.total = farm.targetHours;
+        while (!farm.stopping && farm.done < farm.total) {
+            const hours = Math.min(FARM_CHUNK_HOURS, farm.total - farm.done);
+            const start = cursor - hours * 3_600_000;
+            cursor = start;
+            await withRetry(() => creditPlaytime(game, hours * 3_600_000, Math.max(start, Date.now() - FARM_MAX_BACKDATE)));
+            farm.done += hours;
+            await sleep(FARM_DELAY_MS);
+        }
+    }
+
+    // 100 random titles from Discord's catalog, a short session each.
+    async function farmVariety() {
+        await loadCatalog();
+        if (!play.catalog) throw new Error(play.error ?? "game list unavailable");
+        const pool = [...play.catalog];
+        for (let i = pool.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+        const games = pool.slice(0, 100);
+        let cursor = Date.now();
+        farm.total = games.length;
+        for (const game of games) {
+            if (farm.stopping) break;
+            const start = cursor - 2 * 60_000;
+            cursor = start;
+            await withRetry(() => creditPlaytime(game, 2 * 60_000, Math.max(start, Date.now() - FARM_MAX_BACKDATE)));
+            farm.done++;
+            await sleep(FARM_DELAY_MS);
+        }
+    }
+
+    // Rides your real live stream (fake streams never count): every real minute claims 10 h.
+    function liveStream() {
+        const stream = StreamStore?.getCurrentUserActiveStream?.();
+        if (!stream?.channelId) return null;
+        let viewers = 0;
+        try { viewers = StreamStore.getViewerIds?.(stream)?.length ?? 0; } catch { }
+        return { guildId: stream.guildId ?? "0", channelId: stream.channelId, viewers };
+    }
+    async function farmStream() {
+        const live = liveStream();
+        if (!live) throw new Error(t("farmNeedLive"));
+        if (!live.viewers) throw new Error(t("farmNeedViewer"));
+        const heartbeat = uuid(), launch = uuid();
+        const where = { guild_id: live.guildId, channel_id: live.channelId, channel_type: 2 };
+        const post = events => science(events.map(ev => ({
+            type: ev.type,
+            properties: {
+                client_track_timestamp: Date.now(), client_send_timestamp: Date.now(),
+                client_heartbeat_session_id: heartbeat, launch_signature: launch,
+                event_sequence_number: ++eventSeq, client_app_state: "focused", ...where, ...ev.properties
+            }
+        })));
+        farm.total = farm.targetHours;
+        await post([{ type: "media_session_joined" }, { type: "video_stream_started" }]);
+        try {
+            while (!farm.stopping && farm.done < farm.total) {
+                if (!liveStream()) throw new Error(t("farmNeedLive"));
+                const hours = Math.min(10, farm.total - farm.done);
+                await withRetry(() => post([{
+                    type: "video_stream_heartbeat",
+                    properties: { duration_tracked_ms: hours * 3_600_000, total_duration_ms: (farm.done + hours) * 3_600_000 }
+                }]));
+                farm.done += hours;
+                // One claim per real minute, checking for Stop every second.
+                for (let s = 0; s < 60 && !farm.stopping && farm.done < farm.total; s++) await sleep(1000);
+            }
+        } finally {
+            await post([{ type: "video_stream_ended", properties: { duration_ms: farm.done * 3_600_000 } }]).catch(() => { });
+        }
+    }
+
+    async function farmStart(mode) {
+        if (farm.mode) return;
+        Object.assign(farm, { mode, done: 0, total: 0, error: null, stopping: false });
+        // While crediting hours, Discord also shows you playing that game.
+        const game = mode === "hours" ? play.games[0] : null;
+        const shown = game ? makeFakeGame({ name: game.name, executables: [{ os: "win32", name: game.exeName }] }, game.id) : null;
+        if (shown) addFakeGame(shown, 0);
+        log(`Badge farm: ${mode} started.`);
+        try {
+            if (mode === "hours") await farmHours(game);
+            else if (mode === "variety") await farmVariety();
+            else if (mode === "stream") await farmStream();
+            const unit = mode === "variety" ? t("farmGames") : "h";
+            log(`Badge farm: ${mode} done, ${farm.done} ${unit}.`);
+            notify(t("farmDone"), t("farmDoneBody", { n: `${farm.done.toLocaleString()} ${unit}` }));
+        } catch (e) {
+            farm.error = errMsg(e);
+            warn(`Badge farm (${mode}) failed:`, errMsg(e));
+        } finally {
+            if (shown) removeFakeGame(shown);
+            farm.mode = null;
+        }
+    }
+    const farmStop = () => { farm.stopping = true; };
 
     log("Ready. Panel in the bottom-right corner; orbs.check() forces a check.");
 
@@ -1128,6 +1338,7 @@
 #orbs-root .houses{display:flex;gap:6px;margin-top:6px}
 #orbs-root .house{height:24px;padding:0 8px;border-radius:6px;background:var(--o-hover);font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:background .12s}
 #orbs-root .house:hover:not(:disabled){background:var(--o-active)}
+#orbs-root .house.on{background:var(--o-brand);color:#fff}
 #orbs-root .house i{width:8px;height:8px;border-radius:50%}
 #orbs-root .searchbox{padding:6px 8px 4px}
 #orbs-root .search{width:100%;height:32px;padding:0 10px;border:0;border-radius:8px;background:var(--input-background,var(--background-tertiary,#1e1f22));color:var(--o-text);font:inherit;font-size:13px;outline:none}
@@ -1263,7 +1474,11 @@
         playInput.spellcheck = false;
         const playResults = el("ul");
         const playHint = el("div", "hint");
-        const playContent = el("div", null, playStatus, playGames, playRotate, el("div", "searchbox", playInput), playResults, playHint);
+        const farmHead = el("div", "sec");
+        const farmRows = el("ul");
+        const farmHint = el("div", "hint");
+        const playContent = el("div", null, playStatus, playGames, playRotate, el("div", "searchbox", playInput), playResults, playHint,
+            farmHead, farmRows, farmHint);
         const playBox = el("div", null, playHead, playContent);
         const body = el("div", "body", hero, banners, list, playBox);
         const acceptSw = toggle();
@@ -1359,7 +1574,7 @@
 
         // null = automatic (open on the Quests page); true/false = the user chose.
         let manualOpen = null, lastPath = location.pathname, showOther = false, showBadges = false, showPlay = false;
-        let playSig = null, statusSig = null, playHeadSig = null;
+        let playSig = null, statusSig = null, playHeadSig = null, farmSig = null;
         playInput.addEventListener("input", () => drawPlayResults());
         // The game list is big: fetched the first time the search box is used.
         playInput.addEventListener("focus", () => { if (!play.catalog) loadCatalog().then(drawPlayResults); });
@@ -1428,6 +1643,13 @@
             else if (target.dataset.action === "play-rotate") {
                 play.rotateMin = Number(target.dataset.min);
                 playSave();
+            } else if (target.dataset.action === "farm-run") {
+                farmStart(target.dataset.mode).then(() => { farmSig = null; render(); });
+            } else if (target.dataset.action === "farm-stop") {
+                farmStop();
+            } else if (target.dataset.action === "farm-target") {
+                farm.targetHours = Number(target.dataset.h);
+                prefs.set("farm.targetHours", farm.targetHours);
             } else if (target.dataset.action === "play-add") {
                 playAdd(target.dataset.id);
                 playInput.value = "";
@@ -1435,7 +1657,7 @@
             }
             else if (target.dataset.action === "update") openReleasePage();
             else if (target.dataset.action === "report") copyReport();
-            lastSignature = playSig = statusSig = playHeadSig = null;
+            lastSignature = playSig = statusSig = playHeadSig = farmSig = null;
             render();
         });
 
@@ -1881,6 +2103,52 @@
             }
             playInput.placeholder = t("searchGames");
             playHint.textContent = t("playHint");
+            drawFarm();
+        }
+
+        // Instant: hours, games and stream hours posted straight to Discord's activity data.
+        function drawFarm() {
+            const live = liveStream();
+            const first = play.games[0];
+            const sig = JSON.stringify([farm.mode, farm.done, farm.total, farm.error, farm.targetHours, first?.id, !!live, live?.viewers, lang()]);
+            if (sig === farmSig) return;
+            farmSig = sig;
+            farmHead.textContent = t("farm");
+            farmHint.textContent = t("farmHint");
+
+            const targets = () => el("div", "houses", ...[100, 1000, 5000].map(h => {
+                const b = el("button", `house${farm.targetHours === h ? " on" : ""}`, `${h.toLocaleString()} h`);
+                b.dataset.action = "farm-target";
+                b.dataset.h = h;
+                b.disabled = !!farm.mode;
+                return b;
+            }));
+            const row = (mode, iconName, title, detail, ready, extra) => {
+                const running = farm.mode === mode;
+                const meta = running
+                    ? t("farmRunning", { done: farm.done.toLocaleString(), total: `${farm.total.toLocaleString()}${mode === "variety" ? "" : " h"}` })
+                    : detail;
+                const btn = el("button", running ? "btn ghost" : "btn", t(running ? "stop" : "run"));
+                btn.dataset.action = running ? "farm-stop" : "farm-run";
+                btn.dataset.mode = mode;
+                btn.disabled = !running && (!!farm.mode || !ready);
+                const txt = el("div", "txt", el("div", "n", title), el("div", "m num", meta), extra);
+                if (running && farm.total) {
+                    const fill = el("i");
+                    fill.style.width = `${Math.min(100, farm.done / farm.total * 100)}%`;
+                    txt.append(el("div", "mini", fill));
+                }
+                return el("li", running ? "live" : !ready ? "warn" : "", el("div", "ico", icon(iconName, 16)), txt, btn);
+            };
+            const h = farm.targetHours.toLocaleString();
+            const streamDetail = !live ? t("farmNeedLive") : !live.viewers ? t("farmNeedViewer") : t("farmStreamHow", { h });
+            const rows = [
+                row("hours", "game", t("farmHours"), first ? t("farmHoursHow", { h, name: first.name }) : t("farmHoursNeedGame"), !!first, targets()),
+                row("variety", "activity", t("farmVariety"), t("farmVarietyHow"), true),
+                row("stream", "stream", t("farmStream"), streamDetail, !!live?.viewers)
+            ];
+            if (farm.error && !farm.mode) rows.push(textRow("err", farm.error));
+            farmRows.replaceChildren(...rows);
         }
 
         function drawPlayResults() {
